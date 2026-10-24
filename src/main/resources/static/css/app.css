@@ -1,0 +1,5 @@
+/* Styles propres à DQ-Analyzer. Pas de style en ligne dans les templates (politique CSP). */
+.login-box {
+  max-width: 420px;
+  padding-top: 10vh;
+}

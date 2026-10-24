@@ -1,0 +1,31 @@
+# Build
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Données locales : jamais de fichier métier ni de base dans Git
+storage/
+*.duckdb
+*.duckdb.wal
+logs/
+*.log
+
+# Secrets
+.env
+*.env
+!.env.example
+application-local.yml
+
+# Claude Code : réglages personnels
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{login.title})}"></head>
+<body class="bg-light">
+<main class="container login-box">
+  <h1 class="h4 mb-1" th:text="#{app.name}">DQ-Analyzer</h1>
+  <p class="text-muted small mb-4" th:text="#{app.tagline}"></p>
+
+  <div th:if="${param.error}" class="alert alert-danger" role="alert" th:text="#{login.error}"></div>
+  <div th:if="${param.logout}" class="alert alert-info" role="status" th:text="#{login.logout}"></div>
+
+  <!-- th:action ajoute automatiquement le jeton CSRF -->
+  <form th:action="@{/login}" method="post" class="card card-body shadow-sm">
+    <div class="mb-3">
+      <label for="username" class="form-label" th:text="#{login.username}">Identifiant</label>
+      <input id="username" name="username" class="form-control" autocomplete="username" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label for="password" class="form-label" th:text="#{login.password}">Mot de passe</label>
+      <input id="password" name="password" type="password" class="form-control" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn btn-primary w-100" th:text="#{login.submit}">Se connecter</button>
+  </form>
+</main>
+</body>
+</html>

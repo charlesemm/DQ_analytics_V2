@@ -1,0 +1,24 @@
+# Profil prod : tout ce qui est sensible ou propre au serveur vient des variables d'environnement.
+spring:
+  datasource:
+    url: ${DQ_DB_URL}
+    username: ${DQ_DB_USER}
+    password: ${DQ_DB_PASSWORD}
+  mail:
+    host: ${DQ_MAIL_HOST}
+    port: ${DQ_MAIL_PORT:25}
+
+server:
+  forward-headers-strategy: native   # HTTPS terminé par le reverse proxy (SEC-03)
+  servlet:
+    session:
+      cookie:
+        secure: true
+
+logging:
+  file:
+    name: ${DQ_LOG_FILE:/app/logs/dq-analyzer.log}   # EXP-02
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 30

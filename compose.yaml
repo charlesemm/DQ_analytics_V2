@@ -1,0 +1,57 @@
+# Tout DQ-Analyzer dans Podman : podman compose up -d --build
+name: dq-analyzer
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    container_name: dq-postgres
+    environment:
+      # super utilisateur, local uniquement
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev}
+      # lu par ton script de création (étape 7)
+      DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:-dqanalyzer_dev}
+    volumes:
+      - dq-pgdata:/var/lib/postgresql/data
+      # ton script, exécuté à la première création
+      - ./db/init:/docker-entrypoint-initdb.d:ro,Z
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Faux serveur SMTP : les e-mails (codes 2FA) sont visibles sur http://localhost:8025
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: dq-mailpit
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+  app:
+    build: .
+    image: localhost/dq-analyzer:dev
+    container_name: dq-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: on-failure
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dqanalyzer
+      SPRING_DATASOURCE_USERNAME: dqanalyzer
+      SPRING_DATASOURCE_PASSWORD: ${DQ_DB_PASSWORD:-dqanalyzer_dev}
+      SPRING_MAIL_HOST: mailpit
+      SPRING_MAIL_PORT: "1025"
+    ports:
+      - "8080:8080"
+    volumes:
+      - dq-storage:/data
+
+volumes:
+  dq-pgdata:
+  dq-storage:

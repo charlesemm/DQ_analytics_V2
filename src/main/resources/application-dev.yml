@@ -1,0 +1,17 @@
+# Profil dev : services lancés par "podman compose up -d". Valeurs locales jetables uniquement.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dqanalyzer
+    username: dqanalyzer
+    password: dqanalyzer_dev
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev   # + comptes de démonstration
+  mail:
+    host: localhost
+    port: 1025                    # MailPit ; e-mails visibles sur http://localhost:8025
+  thymeleaf:
+    cache: false
+
+logging:
+  level:
+    ci.cnam.dqanalyzer: DEBUG

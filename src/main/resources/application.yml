@@ -1,0 +1,54 @@
+# Configuration commune à tous les profils. Valeurs propres à un environnement : application-<profil>.yml
+spring:
+  application:
+    name: dq-analyzer
+  profiles:
+    default: dev
+  threads:
+    virtual:
+      enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # le schéma est géré par Flyway, jamais par Hibernate
+  flyway:
+    locations: classpath:db/migration
+  messages:
+    basename: messages
+    fallback-to-system-locale: false
+  servlet:
+    multipart:
+      max-file-size: 20MB         # un morceau d'upload (10 Mo) + marge
+      max-request-size: 25MB
+
+server:
+  servlet:
+    session:
+      timeout: 30m                # SEC-01
+      cookie:
+        http-only: true
+        same-site: lax
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  health:
+    mail:
+      enabled: false              # à réactiver quand le SMTP interne sera connu
+
+dq:
+  storage:
+    path: ${DQ_STORAGE_PATH:./storage}   # fichiers importés et bases DuckDB (3 × taille max par analyse)
+  upload:
+    max-file-size: 2GB                   # PERF-02, paramétrable
+    chunk-size: 10MB
+  retention:
+    days: 90                             # SEC-04
