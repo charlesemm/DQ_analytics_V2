@@ -55,6 +55,14 @@ public final class ImportValidation {
         checkRealType(file, fileName);
     }
 
+    /**
+     * Contrôle que le nom seul permet d'espérer un format lisible. À appeler avant d'écrire quoi que
+     * ce soit sur le disque : inutile de recopier 2 Go pour refuser un .pdf à la fin.
+     */
+    public void checkName(String originalName) {
+        checkExtension(fileName(originalName));
+    }
+
     private void checkExtension(String fileName) {
         int dot = fileName.lastIndexOf('.');
         String extension = dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);

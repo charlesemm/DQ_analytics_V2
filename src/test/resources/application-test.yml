@@ -1,0 +1,9 @@
+# Profil test : la base PostgreSQL vient de Testcontainers (voir TestcontainersConfiguration).
+# Les fichiers importés et les bases DuckDB vont dans target/, effacé par "mvnw clean".
+dq:
+  storage:
+    path: target/dq-test-storage
+
+logging:
+  level:
+    ci.cnam.dqanalyzer: INFO

@@ -142,6 +142,29 @@ class DuckDbCsvLoaderTest {
     }
 
     @Test
+    void remplace_la_base_laissee_par_un_chargement_precedent(@TempDir Path directory) throws Exception {
+        Path database = directory.resolve("analyse.duckdb");
+        Path premier = csv(directory, """
+                id;nom
+                1;Koné
+                """);
+        Path second = csv(
+                directory,
+                """
+                id;nom
+                1;Koné
+                2;Yao
+                3;Traoré
+                """);
+        loader.load(premier, SEMICOLON_UTF8, database, "ds_1");
+
+        var imported = loader.load(second, SEMICOLON_UTF8, database, "ds_1");
+
+        assertThat(imported.rowCount()).isEqualTo(3);
+        assertThat(rows(imported, "_row_num")).hasSize(3);
+    }
+
+    @Test
     void refuse_un_fichier_sans_aucune_ligne_de_donnee(@TempDir Path directory) {
         assertThatExceptionOfType(ImportRejectedException.class)
                 .isThrownBy(() ->
@@ -176,12 +199,18 @@ class DuckDbCsvLoaderTest {
                 writer.write(i + ";nom" + i + ";Abidjan\n");
             }
         }
-        var progress = new ArrayList<Long>();
+        var reportedRows = new ArrayList<Long>();
+        var reportedPercents = new ArrayList<Integer>();
 
-        var imported = loader.load(csv, SEMICOLON_UTF8, directory.resolve("gros.duckdb"), "ds_11", progress::add);
+        var imported = loader.load(csv, SEMICOLON_UTF8, directory.resolve("gros.duckdb"), "ds_11", (percent, rows) -> {
+            reportedPercents.add(percent);
+            reportedRows.add(rows);
+        });
 
         assertThat(imported.rowCount()).isEqualTo(expectedRows);
-        assertThat(progress).isNotEmpty().isSorted().last().isEqualTo((long) expectedRows);
+        assertThat(reportedRows).isNotEmpty().isSorted().last().isEqualTo((long) expectedRows);
+        assertThat(reportedPercents).isSorted().allSatisfy(percent -> assertThat(percent)
+                .isBetween(0, 99));
         assertThat(count(imported, "_row_num = " + (expectedRows + 1))).isEqualTo(1);
     }
 
