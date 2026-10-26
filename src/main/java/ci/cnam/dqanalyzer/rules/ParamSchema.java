@@ -16,6 +16,11 @@ public record ParamSchema(ColumnArity columns, List<Param> params) {
         return new ParamSchema(ColumnArity.ONE, List.of(params));
     }
 
+    /** Règles portant sur une liste de colonnes, par ex. une clé composée (UNI-02). */
+    public static ParamSchema manyColumns(Param... params) {
+        return new ParamSchema(ColumnArity.MANY, List.of(params));
+    }
+
     public enum ColumnArity {
         ONE,
         TWO,
