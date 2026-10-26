@@ -29,3 +29,6 @@ application-local.yml
 # OS
 .DS_Store
 Thumbs.db
+
+# graphify : sorties locales du graphe de connaissance
+graphify-out/
