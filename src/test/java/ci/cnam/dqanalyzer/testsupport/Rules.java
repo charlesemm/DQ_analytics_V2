@@ -14,6 +14,15 @@ public final class Rules {
 
     public static RuleDefinition rule(
             String type, Dimension dimension, List<String> columns, Map<String, Object> params) {
+        return rule(type, dimension, columns, params, Normalization.NONE);
+    }
+
+    public static RuleDefinition rule(
+            String type,
+            Dimension dimension,
+            List<String> columns,
+            Map<String, Object> params,
+            Normalization normalization) {
         return new RuleDefinition(
                 1L,
                 "R-TEST",
@@ -23,7 +32,7 @@ public final class Rules {
                 dimension,
                 columns,
                 params,
-                Normalization.NONE,
+                normalization,
                 Severity.MAJOR,
                 95.0,
                 null);

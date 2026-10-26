@@ -29,6 +29,14 @@ public abstract class RowPredicateEvaluator implements RuleEvaluator {
         return SqlFragment.TRUE;
     }
 
+    /**
+     * Lignes dont la cellule est renseignée. Périmètre des règles de validité : une valeur absente ou
+     * blanche relève de la complétude (CMP-01) et ne doit pas être comptée deux fois.
+     */
+    protected static SqlFragment presentValue(String quotedColumn) {
+        return SqlFragment.of(quotedColumn + " IS NOT NULL AND trim(CAST(" + quotedColumn + " AS VARCHAR)) <> ''");
+    }
+
     /** Colonne dont la valeur est reportée dans l'anomalie. */
     protected String anomalyColumn(RuleDefinition rule) {
         return rule.firstColumn();
