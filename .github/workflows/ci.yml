@@ -1,0 +1,66 @@
+name: CI
+
+# Lance la vérification complète du projet à chaque envoi sur main et à chaque
+# pull request visant main. La commande exécutée est exactement celle que le
+# CLAUDE.md impose avant de considérer une tâche finie : ./mvnw verify.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Un envoi qui en remplace un autre sur la même branche annule l'exécution
+# précédente : inutile de payer deux fois pour un code déjà remplacé.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: ./mvnw verify
+    # Les exécuteurs ubuntu-latest ont Docker préinstallé : indispensable pour
+    # les tests d'intégration *IT, qui démarrent un PostgreSQL via Testcontainers.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Met en cache le dépôt Maven (~/.m2) en se fondant sur les pom.xml :
+          # une exécution ne retélécharge les bibliothèques que si le pom change.
+          cache: maven
+
+      # Compilation, tests unitaires, JAR, tests d'intégration Testcontainers,
+      # contrôle de format Spotless et barrière de couverture JaCoCo (≥ 70 %
+      # sur rules et execution, MAI-02). Le Maven Wrapper garantit la même
+      # version de Maven que sur les postes de développement.
+      - name: Vérification complète
+        run: ./mvnw -B --no-transfer-progress verify
+
+      # Conservé même en cas d'échec : c'est justement là qu'on veut le lire.
+      - name: Publier le rapport de couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Les rapports Surefire/Failsafe disent quel test a échoué et pourquoi.
+      - name: Publier les rapports de tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: warn
+          retention-days: 14

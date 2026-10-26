@@ -1,0 +1,8 @@
+id;sexe;statut
+1;M;ACTIF
+2;F;INACTIF
+3;X;Décédé
+4;\N;ACTIF
+5;"  ";ACTIF
+6;m;actif
+7;Masculin;DECEDE
