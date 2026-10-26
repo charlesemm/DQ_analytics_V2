@@ -32,3 +32,14 @@ Thumbs.db
 
 # graphify : sorties locales du graphe de connaissance
 graphify-out/
+
+# Certificats du serveur : jamais de clé privée dans Git
+deploy/certs/
+
+# Clés et certificats, où qu'ils se trouvent : jamais dans Git
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
