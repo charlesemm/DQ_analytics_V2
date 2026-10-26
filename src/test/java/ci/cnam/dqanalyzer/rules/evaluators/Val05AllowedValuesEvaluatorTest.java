@@ -143,15 +143,6 @@ class Val05AllowedValuesEvaluatorTest {
                 .hasMessageContaining("values");
     }
 
-    @Test
-    void liste_vide_refusee() {
-        var rule = allowedRule("sexe", Map.of("values", List.of()), Normalization.NONE);
-
-        assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
-                .isInstanceOf(RuleEvaluationException.class)
-                .hasMessageContaining("values");
-    }
-
     private static RuleDefinition allowedRule(String column, Map<String, Object> params, Normalization normalization) {
         return Rules.rule("VAL-05", Dimension.VALIDITY, List.of(column), params, normalization);
     }

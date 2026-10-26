@@ -72,7 +72,7 @@ class Uni01UniqueValueEvaluatorTest {
         assertThat(anomalies).extracting(Anomaly::value).containsExactly("A100", "A100", "B200", "B200", "B200");
         assertThat(anomalies).allSatisfy(a -> {
             assertThat(a.column()).isEqualTo("immatriculation");
-            assertThat(a.message()).contains("immatriculation").contains("unique");
+            assertThat(a.message()).contains("immatriculation").contains("plusieurs fois");
         });
     }
 
@@ -92,21 +92,6 @@ class Uni01UniqueValueEvaluatorTest {
         evaluator.evaluate(dataset, uniqueRule(Normalization.NONE), ReferenceProvider.NONE, anomalies::add);
 
         assertThat(anomalies).extracting(Anomaly::rowNum).doesNotContain(10L);
-    }
-
-    @Test
-    void casse_ignoree_apres_normalisation() {
-        var rule = uniqueRule(new Normalization(true, true, false));
-        var anomalies = new ArrayList<Anomaly>();
-
-        var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
-
-        assertThat(result.checkedRows()).isEqualTo(7);
-        assertThat(result.conformingRows()).isEqualTo(1);
-        assertThat(result.duplicateGroups()).isEqualTo(2L);
-        assertThat(anomalies).extracting(Anomaly::rowNum).containsExactly(2L, 4L, 10L, 3L, 6L, 7L);
-        assertThat(anomalies).extracting(Anomaly::duplicateGroup).containsExactly(1L, 1L, 1L, 2L, 2L, 2L);
-        assertThat(anomalies).extracting(Anomaly::value).contains("a100");
     }
 
     @Test

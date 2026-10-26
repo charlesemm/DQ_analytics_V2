@@ -1,0 +1,6 @@
+id;nom;num_secu;statut;num_principal;sexe;age;tel;date_naiss;date_debut;date_fin;quantite;prix;total;code_commune;maj;carte;nir;email;commune
+1;KOUAMÉ Jean;1850101234567;Assuré;;M;34;0707123456;15/03/1990;01/01/2024;31/12/2024;2;10,5;21;001;01/06/2026;4539578763621486;185017512345609;a@b.ci;Plateau
+2;"kouame jean ";1850101234567;Ayant droit;;f;abc;123;31/02/1990;01/02/2024;01/01/2024;3;2;7;999;01/01/2020;4539578763621487;185017512345600;pas-un-mail;Treichville
+3;N'GUESSAN Paul;;"  Ayant droit";A123;X;150;+2250506070809;01/01/1900;;;1;5;5;002;01/01/2030;12ab;;x@y.com;Abobo
+4;NGUESSAN Paul;2900512345678;Conjoint;;M;17;0101020304;01/01/1900;05/05/2024;06/05/2024;;;;001;23/10/2025;;;;
+5;TRAORE2 Awa;2900512345678;Ayant droit;B9;F;45;\N;15/03/2030;x;01/01/2024;2;2;4,001;003;2026-01-01;;;;yopougon

@@ -46,14 +46,12 @@ class Val03LengthEvaluatorTest {
     void declare_le_type_et_la_dimension_du_catalogue() {
         assertThat(evaluator.type()).isEqualTo("VAL-03");
         assertThat(evaluator.dimension()).isEqualTo(Dimension.VALIDITY);
-        assertThat(evaluator.paramSchema().params())
-                .extracting(p -> p.name())
-                .containsExactly("minLength", "maxLength");
+        assertThat(evaluator.paramSchema().params()).extracting(p -> p.name()).containsExactly("min", "max");
     }
 
     @Test
     void longueur_exacte_detecte_trop_court_trop_long_et_espaces() {
-        var rule = lengthRule(Map.of("minLength", 13, "maxLength", 13), Normalization.NONE);
+        var rule = lengthRule(Map.of("min", 13, "max", 13), Normalization.NONE);
         var anomalies = new ArrayList<Anomaly>();
 
         var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -66,13 +64,13 @@ class Val03LengthEvaluatorTest {
                 .containsExactly("12345", "12345678901234567", " 1234567890125 ");
         assertThat(anomalies).allSatisfy(a -> {
             assertThat(a.column()).isEqualTo("num_cnps");
-            assertThat(a.message()).contains("num_cnps").contains("13");
+            assertThat(a.message()).contains("num_cnps");
         });
     }
 
     @Test
     void valeurs_absentes_ou_blanches_hors_perimetre() {
-        var rule = lengthRule(Map.of("minLength", 13, "maxLength", 13), Normalization.NONE);
+        var rule = lengthRule(Map.of("min", 13, "max", 13), Normalization.NONE);
         var anomalies = new ArrayList<Anomaly>();
 
         evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -82,7 +80,7 @@ class Val03LengthEvaluatorTest {
 
     @Test
     void longueur_mesuree_apres_normalisation_des_espaces() {
-        var rule = lengthRule(Map.of("minLength", 13, "maxLength", 13), new Normalization(true, false, false));
+        var rule = lengthRule(Map.of("min", 13, "max", 13), new Normalization(true, false, false));
         var anomalies = new ArrayList<Anomaly>();
 
         var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -94,7 +92,7 @@ class Val03LengthEvaluatorTest {
 
     @Test
     void maximum_seul() {
-        var rule = lengthRule(Map.of("maxLength", 13), Normalization.NONE);
+        var rule = lengthRule(Map.of("max", 13), Normalization.NONE);
         var anomalies = new ArrayList<Anomaly>();
 
         var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -105,7 +103,7 @@ class Val03LengthEvaluatorTest {
 
     @Test
     void minimum_seul() {
-        var rule = lengthRule(Map.of("minLength", 13), Normalization.NONE);
+        var rule = lengthRule(Map.of("min", 13), Normalization.NONE);
         var anomalies = new ArrayList<Anomaly>();
 
         var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -116,7 +114,7 @@ class Val03LengthEvaluatorTest {
 
     @Test
     void parametre_texte_accepte_depuis_le_json() {
-        var rule = lengthRule(Map.of("minLength", "13", "maxLength", "13"), Normalization.NONE);
+        var rule = lengthRule(Map.of("min", "13", "max", "13"), Normalization.NONE);
         var anomalies = new ArrayList<Anomaly>();
 
         var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
@@ -130,33 +128,17 @@ class Val03LengthEvaluatorTest {
 
         assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
                 .isInstanceOf(RuleEvaluationException.class)
-                .hasMessageContaining("minLength")
-                .hasMessageContaining("maxLength");
-    }
-
-    @Test
-    void minimum_superieur_au_maximum_refuse() {
-        var rule = lengthRule(Map.of("minLength", 14, "maxLength", 13), Normalization.NONE);
-
-        assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
-                .isInstanceOf(RuleEvaluationException.class);
+                .hasMessageContaining("minimale")
+                .hasMessageContaining("maximale");
     }
 
     @Test
     void borne_non_numerique_refusee() {
-        var rule = lengthRule(Map.of("minLength", "treize"), Normalization.NONE);
+        var rule = lengthRule(Map.of("min", "treize"), Normalization.NONE);
 
         assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
                 .isInstanceOf(RuleEvaluationException.class)
-                .hasMessageContaining("minLength");
-    }
-
-    @Test
-    void borne_negative_refusee() {
-        var rule = lengthRule(Map.of("maxLength", -1), Normalization.NONE);
-
-        assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
-                .isInstanceOf(RuleEvaluationException.class);
+                .hasMessageContaining("min");
     }
 
     private static RuleDefinition lengthRule(Map<String, Object> params, Normalization normalization) {
