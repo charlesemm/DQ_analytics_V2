@@ -15,7 +15,10 @@ services:
       # ton script, exécuté à la première création
       - ./db/init:/docker-entrypoint-initdb.d:ro,Z
     ports:
-      - "127.0.0.1:5432:5432"
+      # HÔTE:CONTENEUR. 5435 côté poste au lieu du 5432 du guide : un service PostgreSQL
+      # Windows (postgresql-x64-17) occupe déjà 5432. Sans effet sur l'application, qui
+      # joint la base par le réseau interne (postgres:5432).
+      - "127.0.0.1:5435:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres" ]
       interval: 5s

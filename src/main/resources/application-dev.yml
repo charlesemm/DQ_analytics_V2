@@ -1,7 +1,11 @@
 # Profil dev : services lancés par "podman compose up -d". Valeurs locales jetables uniquement.
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/dqanalyzer
+    # Port 5435 et non 5432 : un service PostgreSQL Windows occupe déjà 5432 sur ce poste.
+    # Voir le commentaire de "ports" dans compose.yaml. Dans le conteneur, compose.yaml
+    # impose SPRING_DATASOURCE_URL avec le port interne 5432 : cette ligne ne vaut que
+    # pour un lancement depuis l'éditeur (./mvnw spring-boot:run).
+    url: jdbc:postgresql://localhost:5435/dqanalyzer
     username: dqanalyzer
     password: dqanalyzer_dev
   flyway:
