@@ -20,6 +20,12 @@ spring:
     multipart:
       max-file-size: 20MB         # un morceau d'upload (10 Mo) + marge
       max-request-size: 25MB
+  task:
+    execution:
+      simple:
+        # Imports et analyses tournent en @Async sur threads virtuels. La limite borne le nombre de
+        # traitements simultanés : le disque doit tenir 3 × la taille max par traitement (PERF-03).
+        concurrency-limit: 4
 
 server:
   servlet:
