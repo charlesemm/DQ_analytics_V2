@@ -175,10 +175,11 @@ démarrage de PostgreSQL exécute `db/init/01-create-database.sh`, qui crée le
 compte applicatif avec `DQ_DB_PASSWORD`. Le changer après coup ne changerait
 rien dans la base.
 
-**`DQ_MAIL_HOST`** : laisse la valeur par défaut pour l'instant. L'application
-démarrera normalement ; seuls les codes 2FA par e-mail ne partiront pas. Quand
-tu auras l'adresse du relais (le certificat mentionne `mail.ipscnam.ci`),
-renseigne-la et relance l'application — voir l'étape 11.
+**`DQ_MAIL_HOST`** : déjà renseigné à `mail.ipscnam.ci` dans `.env.example`, tu
+n'y touches pas. Si ce relais exige une authentification, l'envoi des codes 2FA
+échouera plus tard avec un `535 Authentication required` dans les logs : il
+faudra alors un compte de service et deux lignes de configuration
+(`spring.mail.username` et `password`), ce qui n'est pas encore en place.
 
 ---
 
