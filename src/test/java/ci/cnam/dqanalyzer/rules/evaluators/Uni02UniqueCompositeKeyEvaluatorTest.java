@@ -25,13 +25,14 @@ import org.junit.jupiter.api.Test;
 /**
  * UNI-02 sur nom + prénoms + date de naissance. Jeu de test : 6 lignes (n° de ligne 2 à 8), un
  * doublon exact (lignes 2 et 3), un faux doublon qui ne diffère que par les prénoms (ligne 4), un
- * doublon à la casse près (lignes 5 et 6), une clé incomplète (ligne 7) et une ligne unique.
+ * doublon à la casse près (lignes 5 et 6, qui relève d'UNI-03), une clé incomplète (ligne 7) et une
+ * ligne unique.
  */
-class Uni02CompositeKeyEvaluatorTest {
+class Uni02UniqueCompositeKeyEvaluatorTest {
 
     private static final List<String> KEY = List.of("nom", "prenoms", "date_naissance");
 
-    private final Uni02CompositeKeyEvaluator evaluator = new Uni02CompositeKeyEvaluator();
+    private final Uni02UniqueCompositeKeyEvaluator evaluator = new Uni02UniqueCompositeKeyEvaluator();
     private Connection connection;
     private Dataset dataset;
 
@@ -77,7 +78,7 @@ class Uni02CompositeKeyEvaluatorTest {
         assertThat(anomalies).allSatisfy(a -> {
             assertThat(a.column()).isEqualTo("nom + prenoms + date_naissance");
             assertThat(a.value()).isEqualTo("KOUAME | Jean | 01/01/1980");
-            assertThat(a.message()).contains("nom").contains("prenoms").contains("unique");
+            assertThat(a.message()).contains("nom").contains("prenoms").contains("plusieurs fois");
         });
     }
 
@@ -91,22 +92,17 @@ class Uni02CompositeKeyEvaluatorTest {
     }
 
     @Test
-    void casse_ignoree_apres_normalisation() {
-        var rule = compositeRule(KEY, new Normalization(true, true, false));
+    void la_casse_distingue_deux_cles_sans_normalisation() {
         var anomalies = new ArrayList<Anomaly>();
 
-        var result = evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, anomalies::add);
+        evaluator.evaluate(dataset, compositeRule(KEY, Normalization.NONE), ReferenceProvider.NONE, anomalies::add);
 
-        assertThat(result.checkedRows()).isEqualTo(6);
-        assertThat(result.conformingRows()).isEqualTo(2);
-        assertThat(result.duplicateGroups()).isEqualTo(2L);
-        assertThat(anomalies).extracting(Anomaly::rowNum).containsExactly(2L, 3L, 5L, 6L);
-        assertThat(anomalies).extracting(Anomaly::duplicateGroup).containsExactly(1L, 1L, 2L, 2L);
+        assertThat(anomalies).extracting(Anomaly::rowNum).doesNotContain(5L, 6L);
     }
 
     @Test
     void cle_groupee_colonne_par_colonne_et_jamais_concatenee() throws Exception {
-        // « AB » + « C » et « A » + « BC » ne sont pas la même clé : concaténer créerait un faux doublon
+        // AB + C et A + BC ne sont pas la même clé : concaténer créerait un faux doublon
         try (var other = DriverManager.getConnection("jdbc:duckdb:")) {
             var collisions = TestDatasets.loadCsv(other, "datasets/uni02_cle_collision.csv");
             var rule = compositeRule(List.of("code", "suffixe"), Normalization.NONE);
@@ -122,21 +118,21 @@ class Uni02CompositeKeyEvaluatorTest {
     }
 
     @Test
-    void une_seule_colonne_refusee() {
-        var rule = compositeRule(List.of("nom"), Normalization.NONE);
-
-        assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
-                .isInstanceOf(RuleEvaluationException.class)
-                .hasMessageContaining("UNI-01");
-    }
-
-    @Test
     void colonne_inconnue_message_clair() {
         var rule = compositeRule(List.of("nom", "adresse"), Normalization.NONE);
 
         assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
                 .isInstanceOf(RuleEvaluationException.class)
                 .hasMessageContaining("adresse");
+    }
+
+    @Test
+    void aucune_colonne_ciblee_message_clair() {
+        var rule = compositeRule(List.of(), Normalization.NONE);
+
+        assertThatThrownBy(() -> evaluator.evaluate(dataset, rule, ReferenceProvider.NONE, a -> {}))
+                .isInstanceOf(RuleEvaluationException.class)
+                .hasMessageContaining("aucune colonne");
     }
 
     private static RuleDefinition compositeRule(List<String> columns, Normalization normalization) {

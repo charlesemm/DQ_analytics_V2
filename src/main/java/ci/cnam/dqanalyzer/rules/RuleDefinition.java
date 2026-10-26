@@ -43,4 +43,12 @@ public record RuleDefinition(
         }
         return targetColumns.getFirst();
     }
+
+    /** Deuxième colonne ciblée : règles qui comparent deux colonnes (COH-01) ou une clé et une valeur (EXA-01). */
+    public String secondColumn() {
+        if (targetColumns.size() < 2) {
+            throw new RuleEvaluationException("La règle " + ruleCode + " doit cibler deux colonnes");
+        }
+        return targetColumns.get(1);
+    }
 }
