@@ -40,7 +40,7 @@ class CsvImportService implements ImportService {
     private final FileStorage storage;
     private final ImportValidation validation;
     private final CsvFormatDetector detector;
-    private final DuckDbCsvLoader loader;
+    private final DuckDbTableLoader loader;
     private final CurrentUserProvider currentUser;
     private final ObjectMapper json;
     private final MessageSource messages;
@@ -51,7 +51,7 @@ class CsvImportService implements ImportService {
             FileStorage storage,
             ImportValidation validation,
             CsvFormatDetector detector,
-            DuckDbCsvLoader loader,
+            DuckDbTableLoader loader,
             CurrentUserProvider currentUser,
             ObjectMapper json,
             MessageSource messages,

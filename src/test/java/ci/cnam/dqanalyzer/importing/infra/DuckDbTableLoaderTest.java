@@ -23,12 +23,12 @@ import org.junit.jupiter.api.io.TempDir;
  * est conservé dans {@code _row_num} : en-tête = ligne 1, première donnée = ligne 2, comme dans les
  * jeux de test des évaluateurs.
  */
-class DuckDbCsvLoaderTest {
+class DuckDbTableLoaderTest {
 
     private static final ImportSettings SEMICOLON_UTF8 = new ImportSettings("UTF-8", ';', '"', true);
 
     private final DuckDbDatabases databases = new DuckDbDatabases();
-    private final DuckDbCsvLoader loader = new DuckDbCsvLoader(databases);
+    private final DuckDbTableLoader loader = new DuckDbTableLoader(databases);
 
     @Test
     void charge_les_lignes_avec_leur_numero_d_origine(@TempDir Path directory) throws Exception {
@@ -250,7 +250,7 @@ class DuckDbCsvLoaderTest {
 
     private static Path fixture(String name) {
         var url = Objects.requireNonNull(
-                DuckDbCsvLoaderTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
+                DuckDbTableLoaderTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
         try {
             return Path.of(url.toURI());
         } catch (URISyntaxException e) {
