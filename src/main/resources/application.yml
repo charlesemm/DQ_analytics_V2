@@ -28,7 +28,12 @@ spring:
         concurrency-limit: 4
 
 server:
+  # L'application est servie sous un sous-chemin du domaine d'ÉCHO : https://echo.ipscnam.ci/dq/
+  # Le nginx de l'hôte relaie /dq/ tel quel, chemin compris ; Tomcat doit donc attendre ce préfixe.
+  # Il vaut aussi en développement (http://localhost:8080/dq/), pour que ce qui marche ici marche là-bas.
+  # Effet de bord utile : le témoin de session est posé sur /dq et ne croise jamais celui d'ÉCHO.
   servlet:
+    context-path: ${DQ_CONTEXT_PATH:/dq}
     session:
       timeout: 30m                # SEC-01
       cookie:

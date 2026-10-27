@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<body>
+<!--
+  Détail d'une colonne, inséré par HTMX dans la ligne dépliée : les valeurs les plus fréquentes
+  (PRF-02) et les motifs dominants (PRF-03), côte à côte.
+-->
+<div class="row g-3 p-3 bg-body-tertiary">
+  <div class="col-md-6">
+    <h3 class="h6" th:text="#{profiling.valeurs-frequentes}">Valeurs les plus fréquentes</h3>
+    <p class="text-muted small mb-1" th:if="${#lists.isEmpty(profile.topValues())}"
+       th:text="#{profiling.aucune-valeur}"></p>
+    <table class="table table-sm mb-0" th:unless="${#lists.isEmpty(profile.topValues())}">
+      <tbody>
+      <tr th:each="valeur : ${profile.topValues()}">
+        <td th:text="${valeur.value()}"></td>
+        <td class="text-end text-muted" th:text="#{profiling.occurrences(${valeur.count()})}"></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-6">
+    <h3 class="h6" th:text="#{profiling.motifs}">Motifs dominants</h3>
+    <p class="text-muted small" th:text="#{profiling.motifs.aide}"></p>
+    <table class="table table-sm mb-0" th:unless="${#lists.isEmpty(profile.patterns())}">
+      <tbody>
+      <tr th:each="motif : ${profile.patterns()}">
+        <td><code th:text="${motif.value()}"></code></td>
+        <td class="text-end text-muted" th:text="#{profiling.occurrences(${motif.count()})}"></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col-12 text-muted small" th:if="${profile.minValue() != null}">
+    <span th:text="#{profiling.valeur-min(${profile.minValue()})}"></span>
+    <span class="ms-3" th:text="#{profiling.valeur-max(${profile.maxValue()})}"></span>
+  </div>
+</div>
+</body>
+</html>
