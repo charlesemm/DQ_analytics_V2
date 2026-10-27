@@ -9,6 +9,7 @@ import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
 import java.net.URISyntaxException;

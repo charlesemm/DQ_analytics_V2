@@ -8,6 +8,7 @@ import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.domain.RowSource;
 import ci.cnam.dqanalyzer.importing.domain.RowSources;
 import ci.cnam.dqanalyzer.rules.Dataset;
+import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import ci.cnam.dqanalyzer.shared.duckdb.DuckDbIdentifiers;
 import java.io.IOException;
 import java.nio.file.Path;
