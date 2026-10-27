@@ -102,9 +102,7 @@ public final class ImportValidation {
         try (var stream = TikaInputStream.get(file)) {
             var mediaType = detector.detect(stream, metadata);
             String baseType = mediaType.getBaseType().toString();
-            // Un fichier texte délimité peut être reconnu sous n'importe quel type « text/… » selon
-            // son contenu (text/x-matlab pour des nombres, par exemple) : la famille suffit.
-            boolean textual = format == ImportFormat.DELIMITED && "text".equals(mediaType.getType());
+            boolean textual = format.acceptsAnyTextContent() && "text".equals(mediaType.getType());
             if (!textual && !format.accepts(baseType)) {
                 throw new ImportRejectedException("import.error.type-inattendu");
             }

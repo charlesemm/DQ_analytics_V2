@@ -1,7 +1,7 @@
 package ci.cnam.dqanalyzer.importing.infra;
 
-import ci.cnam.dqanalyzer.importing.domain.CsvFormatDetector;
 import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
+import ci.cnam.dqanalyzer.importing.domain.TextFormatDetector;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +20,7 @@ class ImportConfiguration {
     }
 
     @Bean
-    CsvFormatDetector csvFormatDetector() {
-        return new CsvFormatDetector();
+    TextFormatDetector textFormatDetector() {
+        return new TextFormatDetector();
     }
 }

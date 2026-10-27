@@ -1,9 +1,12 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
 import ci.cnam.dqanalyzer.importing.DelimitedSettings;
+import ci.cnam.dqanalyzer.importing.FixedWidthSettings;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.JsonSettings;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.importing.XmlSettings;
 import java.nio.file.Path;
 
 /**
@@ -23,6 +26,9 @@ public final class RowSources {
     public static RowSource open(Path file, ImportSettings settings) {
         return switch (settings) {
             case DelimitedSettings delimited -> DelimitedRowSource.open(file, delimited);
+            case FixedWidthSettings fixedWidth -> FixedWidthRowSource.open(file, fixedWidth);
+            case XmlSettings xml -> XmlRowSource.open(file, xml);
+            case JsonSettings json -> JsonRowSource.open(file, json);
             case SheetSettings sheet ->
                 switch (sheet.format()) {
                     case XLSX -> XlsxRowSource.open(file, sheet);

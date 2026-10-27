@@ -18,7 +18,17 @@ public enum ImportFormat {
     /** .csv, .tsv, .txt : séparateur, encodage et guillemets paramétrables (IMP-03). */
     DELIMITED(
             List.of("csv", "tsv", "txt"),
-            Set.of("text/csv", "text/plain", "text/tab-separated-values", "application/csv")),
+            Set.of("text/csv", "text/plain", "text/tab-separated-values", "application/csv"),
+            true),
+
+    /** Largeur fixe : chaque colonne est décrite par sa position et sa longueur (IMP-08). */
+    FIXED_WIDTH(List.of("dat"), Set.of("text/plain"), true),
+
+    /** XML : l'élément répété vaut une ligne, ses sous-éléments et attributs valent les colonnes. */
+    XML(List.of("xml"), Set.of("application/xml", "text/xml"), true),
+
+    /** JSON : un objet vaut une ligne, en tableau ou un objet par ligne (.jsonl, .ndjson). */
+    JSON(List.of("json", "jsonl", "ndjson"), Set.of("application/json"), true),
 
     /** Excel 2007 et suivants : feuille et ligne d'en-tête paramétrables (IMP-02). */
     XLSX(
@@ -64,14 +74,29 @@ public enum ImportFormat {
     /** Taille maximale propre au format ; sans limite propre, c'est celle de la configuration. */
     private final long maxSizeBytes;
 
+    /**
+     * Vrai pour les formats texte : Tika reconnaît un fichier texte sous des types très variés selon
+     * son contenu (text/x-matlab pour des nombres, par exemple), la famille « text/… » suffit alors.
+     */
+    private final boolean anyTextContent;
+
     ImportFormat(List<String> extensions, Set<String> mediaTypes) {
-        this(extensions, mediaTypes, Long.MAX_VALUE);
+        this(extensions, mediaTypes, Long.MAX_VALUE, false);
+    }
+
+    ImportFormat(List<String> extensions, Set<String> mediaTypes, boolean anyTextContent) {
+        this(extensions, mediaTypes, Long.MAX_VALUE, anyTextContent);
     }
 
     ImportFormat(List<String> extensions, Set<String> mediaTypes, long maxSizeBytes) {
+        this(extensions, mediaTypes, maxSizeBytes, false);
+    }
+
+    ImportFormat(List<String> extensions, Set<String> mediaTypes, long maxSizeBytes, boolean anyTextContent) {
         this.extensions = extensions;
         this.mediaTypes = mediaTypes;
         this.maxSizeBytes = maxSizeBytes;
+        this.anyTextContent = anyTextContent;
     }
 
     /** Format déduit de l'extension du nom de fichier ; vide si l'extension n'est pas acceptée. */
@@ -100,6 +125,11 @@ public enum ImportFormat {
     /** Vrai si ce type de contenu, déduit des premiers octets du fichier, convient à ce format. */
     public boolean accepts(String mediaType) {
         return mediaTypes.contains(mediaType);
+    }
+
+    /** Vrai si n'importe quel contenu de la famille « text/… » convient à ce format. */
+    public boolean acceptsAnyTextContent() {
+        return anyTextContent;
     }
 
     public List<String> extensions() {

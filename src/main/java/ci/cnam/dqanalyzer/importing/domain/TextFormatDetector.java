@@ -29,7 +29,7 @@ import org.apache.commons.csv.CSVParser;
  * accepte tous les octets. Séparateur : on essaie chaque candidat du CDC et on garde celui qui donne
  * le nombre de colonnes le plus régulier.
  */
-public final class CsvFormatDetector {
+public final class TextFormatDetector {
 
     static final int SAMPLE_SIZE = 64 * 1024;
 
@@ -43,6 +43,22 @@ public final class CsvFormatDetector {
     public DelimitedSettings detect(Path file) {
         try (var in = Files.newInputStream(file)) {
             return detect(in);
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
+        }
+    }
+
+    /**
+     * Détecte le seul encodage, pour les formats texte qui n'ont pas de séparateur : largeur fixe,
+     * XML, JSON (IMP-07).
+     */
+    public String detectCharsetName(Path file) {
+        try (var in = Files.newInputStream(file)) {
+            byte[] sample = readSample(in);
+            if (sample.length == 0) {
+                throw new ImportRejectedException("import.error.fichier-vide");
+            }
+            return detectEncoding(sample, sample.length == SAMPLE_SIZE).charsetName();
         } catch (IOException e) {
             throw new ImportRejectedException("import.error.fichier-illisible");
         }

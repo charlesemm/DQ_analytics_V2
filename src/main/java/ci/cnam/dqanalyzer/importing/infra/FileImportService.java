@@ -1,16 +1,19 @@
 package ci.cnam.dqanalyzer.importing.infra;
 
+import ci.cnam.dqanalyzer.importing.FixedWidthSettings;
 import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportProgress;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.JsonSettings;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
-import ci.cnam.dqanalyzer.importing.domain.CsvFormatDetector;
+import ci.cnam.dqanalyzer.importing.XmlSettings;
 import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
 import ci.cnam.dqanalyzer.importing.domain.SourceFile;
+import ci.cnam.dqanalyzer.importing.domain.TextFormatDetector;
 import ci.cnam.dqanalyzer.security.CurrentUserProvider;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -42,7 +45,7 @@ class FileImportService implements ImportService {
     private final SourceFileRepository sourceFiles;
     private final FileStorage storage;
     private final ImportValidation validation;
-    private final CsvFormatDetector detector;
+    private final TextFormatDetector detector;
     private final DuckDbTableLoader loader;
     private final CurrentUserProvider currentUser;
     private final ObjectMapper json;
@@ -53,7 +56,7 @@ class FileImportService implements ImportService {
             SourceFileRepository sourceFiles,
             FileStorage storage,
             ImportValidation validation,
-            CsvFormatDetector detector,
+            TextFormatDetector detector,
             DuckDbTableLoader loader,
             CurrentUserProvider currentUser,
             ObjectMapper json,
@@ -106,6 +109,10 @@ class FileImportService implements ImportService {
         return switch (format) {
             case DELIMITED -> detector.detect(file);
             case XLSX, XLS, ODS -> SheetSettings.defaults(format);
+            // Le gabarit ne se devine pas : l'analyste le saisit, ou le reprend d'un modèle (IMP-08).
+            case FIXED_WIDTH -> FixedWidthSettings.empty(detector.detectCharsetName(file));
+            case XML -> XmlSettings.undetermined();
+            case JSON -> JsonSettings.root();
             case PARQUET -> new ParquetSettings();
         };
     }
