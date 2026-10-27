@@ -105,7 +105,7 @@ class FileImportService implements ImportService {
     private ImportSettings detect(ImportFormat format, Path file) {
         return switch (format) {
             case DELIMITED -> detector.detect(file);
-            case XLSX -> SheetSettings.defaults(format);
+            case XLSX, XLS, ODS -> SheetSettings.defaults(format);
             case PARQUET -> new ParquetSettings();
         };
     }

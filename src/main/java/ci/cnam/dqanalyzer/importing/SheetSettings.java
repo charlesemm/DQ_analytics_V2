@@ -18,7 +18,8 @@ public record SheetSettings(ImportFormat format, String sheetName, int headerRow
     public static final int NO_HEADER = 0;
 
     /** Formats qui se lisent feuille par feuille. */
-    public static final Set<ImportFormat> SHEET_FORMATS = EnumSet.of(ImportFormat.XLSX);
+    public static final Set<ImportFormat> SHEET_FORMATS =
+            EnumSet.of(ImportFormat.XLSX, ImportFormat.XLS, ImportFormat.ODS);
 
     public SheetSettings {
         if (!SHEET_FORMATS.contains(format)) {

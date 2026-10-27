@@ -7,10 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
@@ -38,7 +36,7 @@ import org.xml.sax.SAXException;
  * n'existent pas dans le fichier (une ligne de trois colonnes dont la dernière est vide n'est donc
  * pas une ligne incomplète), et le numéro de ligne est celui qu'affiche Excel.
  */
-public final class XlsxRowSource implements RowSource {
+public final class XlsxRowSource extends SheetRowSource {
 
     private static final String ROW = "row";
     private static final String CELL = "c";
@@ -61,16 +59,9 @@ public final class XlsxRowSource implements RowSource {
     private final StylesTable styles;
     private final DataFormatter formatter = new DataFormatter(Locale.FRANCE);
 
-    /** Connues seulement après la lecture de l'en-tête, d'où l'absence de {@code final}. */
-    private List<String> columns = List.of();
-
     /** Dernière ligne annoncée par la feuille, pour l'avancement ; 0 si la feuille ne le dit pas. */
     private final long lastRowNumber;
 
-    /** Première ligne de données, déjà lue pour en déduire les colonnes d'une feuille sans en-tête. */
-    private Row pending;
-
-    private Row current;
     private long lastReadRowNumber;
 
     private XlsxRowSource(
@@ -103,7 +94,7 @@ public final class XlsxRowSource implements RowSource {
             var strings = new ReadOnlySharedStringsTable(workbook);
             var reader = new XSSFReader(workbook);
             sheet = openSheet(reader, settings.sheetName());
-            xml = inputFactory().createXMLStreamReader(sheet);
+            xml = XmlReaders.create(sheet);
             var source = new XlsxRowSource(workbook, sheet, xml, strings, reader.getStylesTable(), readDimension(xml));
             source.readHeader(settings);
             return source;
@@ -137,45 +128,8 @@ public final class XlsxRowSource implements RowSource {
     }
 
     @Override
-    public List<String> columns() {
-        return columns;
-    }
-
-    @Override
-    public boolean next() {
-        if (pending != null) {
-            current = pending;
-            pending = null;
-            return true;
-        }
-        current = readRow();
-        return current != null;
-    }
-
-    @Override
-    public long rowNumber() {
-        return current.number();
-    }
-
-    @Override
-    public int fieldCount() {
-        // Une cellule vide en fin de ligne n'existe pas dans le fichier : seule une cellule au-delà
-        // de la dernière colonne de l'en-tête fait une ligne en trop longue.
-        return Math.max(columns.size(), current.values().size());
-    }
-
-    @Override
-    public String field(int index) {
-        var values = current.values();
-        if (index >= values.size()) {
-            return null;
-        }
-        String value = values.get(index);
-        return value == null || value.isEmpty() ? null : value;
-    }
-
-    @Override
     public int percent() {
+        var current = currentRow();
         if (lastRowNumber <= 0 || current == null) {
             return 0;
         }
@@ -187,40 +141,17 @@ public final class XlsxRowSource implements RowSource {
         closeQuietly(xml, sheet, workbook);
     }
 
-    /** Lit la ligne d'en-tête, ou la première ligne de données si la feuille n'en a pas (IMP-02). */
-    private void readHeader(SheetSettings settings) {
-        if (!settings.hasHeader()) {
-            Row first = readRow();
-            if (first == null) {
-                throw new ImportRejectedException("import.error.fichier-vide");
-            }
-            columns = HeaderNames.normalize(Collections.nCopies(first.values().size(), ""));
-            pending = first;
-            return;
-        }
-        Row row = readRow();
-        if (row == null) {
-            throw new ImportRejectedException("import.error.fichier-vide");
-        }
-        while (row.number() < settings.headerRow()) {
-            row = readRow();
-            if (row == null) {
-                throw new ImportRejectedException("import.error.ligne-entete-introuvable", settings.headerRow());
-            }
-        }
-        if (row.number() > settings.headerRow()) {
-            throw new ImportRejectedException("import.error.ligne-entete-introuvable", settings.headerRow());
-        }
-        columns = HeaderNames.normalize(row.values());
-    }
-
     /** Ligne suivante de la feuille, ou {@code null} à la fin de {@code sheetData}. */
-    private Row readRow() {
+    @Override
+    protected Row nextRow() {
         try {
             while (xml.hasNext()) {
                 int event = xml.next();
                 if (event == XMLStreamConstants.START_ELEMENT && ROW.equals(xml.getLocalName())) {
-                    return readCells();
+                    var row = readCells();
+                    if (!isEmpty(row.values())) {
+                        return row;
+                    }
                 }
                 if (event == XMLStreamConstants.END_ELEMENT && SHEET_DATA.equals(xml.getLocalName())) {
                     return null;
@@ -410,14 +341,6 @@ public final class XlsxRowSource implements RowSource {
                 : new ImportRejectedException("import.error.feuille-introuvable", sheetName);
     }
 
-    /** Lecteur XML sans entités externes ni DTD : un classeur reçu n'a pas à faire sortir le serveur. */
-    private static XMLInputFactory inputFactory() {
-        var factory = XMLInputFactory.newInstance();
-        factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-        factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
-        return factory;
-    }
-
     private static void closeQuietly(XMLStreamReader xml, InputStream sheet, Closeable workbook) {
         if (xml != null) {
             try {
@@ -436,7 +359,4 @@ public final class XlsxRowSource implements RowSource {
             }
         }
     }
-
-    /** Une ligne de la feuille : son numéro d'origine et ses cellules, rangées à leur position. */
-    private record Row(long number, List<String> values) {}
 }

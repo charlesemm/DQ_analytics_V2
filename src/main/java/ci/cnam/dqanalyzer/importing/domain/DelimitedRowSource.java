@@ -4,9 +4,7 @@ import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import java.io.BufferedReader;
 import java.io.Closeable;
-import java.io.FilterInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -206,38 +204,6 @@ public final class DelimitedRowSource implements RowSource {
                     // Ouverture déjà en échec : rien de plus à tenter sur ce flux.
                 }
             }
-        }
-    }
-
-    /** Compte les octets consommés du fichier, pour exprimer l'avancement en pourcentage. */
-    private static final class CountingInputStream extends FilterInputStream {
-
-        private long bytesRead;
-
-        private CountingInputStream(InputStream in) {
-            super(in);
-        }
-
-        private long bytesRead() {
-            return bytesRead;
-        }
-
-        @Override
-        public int read() throws IOException {
-            int value = super.read();
-            if (value >= 0) {
-                bytesRead++;
-            }
-            return value;
-        }
-
-        @Override
-        public int read(byte[] buffer, int offset, int length) throws IOException {
-            int count = super.read(buffer, offset, length);
-            if (count > 0) {
-                bytesRead += count;
-            }
-            return count;
         }
     }
 }

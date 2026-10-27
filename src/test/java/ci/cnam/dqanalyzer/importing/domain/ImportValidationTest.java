@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
+import ci.cnam.dqanalyzer.testsupport.OpenDocuments;
 import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -61,6 +62,37 @@ class ImportValidationTest {
                 .isThrownBy(() -> validation.checkAcceptable(faux, "assures.xlsx"))
                 .extracting(ImportRejectedException::messageKey)
                 .isEqualTo("import.error.type-inattendu");
+    }
+
+    @Test
+    void accepte_un_classeur_excel_97_et_un_classeur_opendocument(@TempDir Path directory) {
+        var contenu = List.<List<Object>>of(List.of("id"), List.of("1"));
+        Path xls = Workbooks.writeXls(directory.resolve("assures.xls"), Workbooks.sheet("Feuil1", contenu));
+        Path ods = OpenDocuments.write(directory.resolve("assures.ods"), Workbooks.sheet("Feuil1", contenu));
+
+        assertThat(validation.checkAcceptable(xls, "assures.xls")).isEqualTo(ImportFormat.XLS);
+        assertThat(validation.checkAcceptable(ods, "assures.ods")).isEqualTo(ImportFormat.ODS);
+    }
+
+    @Test
+    void les_formats_lus_en_memoire_sont_limites_a_cent_megaoctets() {
+        long centMegaoctets = 100L * 1024 * 1024;
+
+        assertThat(ImportFormat.XLS.maxSizeBytes()).isEqualTo(centMegaoctets);
+        assertThat(ImportFormat.ODS.maxSizeBytes()).isEqualTo(centMegaoctets);
+        assertThat(ImportFormat.DELIMITED.maxSizeBytes()).isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
+    void refuse_un_classeur_plus_grand_que_la_limite_du_format(@TempDir Path directory) {
+        var sansLimiteDeConfiguration = new ImportValidation(Long.MAX_VALUE);
+        Path xls =
+                Workbooks.writeXls(directory.resolve("assures.xls"), Workbooks.sheet("Feuil1", List.of(List.of("id"))));
+
+        // La limite du format, plus basse que celle de la configuration, est celle qui s'applique.
+        assertThat(ImportFormat.XLS.maxSizeBytes()).isLessThan(Long.MAX_VALUE);
+        assertThatCode(() -> sansLimiteDeConfiguration.checkAcceptable(xls, "assures.xls"))
+                .doesNotThrowAnyException();
     }
 
     @Test

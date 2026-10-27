@@ -29,6 +29,23 @@ public enum ImportFormat {
                     "application/x-tika-ooxml")),
 
     /**
+     * Excel 97-2003 : limité à 100 Mo (CDC §5.1 bis), parce qu'il se lit en mémoire et qu'une feuille
+     * n'y dépasse de toute façon pas 65 536 lignes.
+     */
+    XLS(
+            List.of("xls"),
+            Set.of("application/vnd.ms-excel", "application/x-tika-msoffice"),
+            ImportFormat.HUNDRED_MEGABYTES),
+
+    /** OpenDocument : limité à 100 Mo comme le CDC le prévoit. */
+    ODS(
+            List.of("ods"),
+            Set.of(
+                    "application/vnd.oasis.opendocument.spreadsheet",
+                    "application/x-vnd.oasis.opendocument.spreadsheet"),
+            ImportFormat.HUNDRED_MEGABYTES),
+
+    /**
      * Parquet : aucun paramètre, le fichier porte son schéma. Il se reconnaît à ses quatre premiers
      * octets, « PAR1 », et non à son type de contenu, que Tika ne distingue pas d'un binaire
      * quelconque.
@@ -38,12 +55,23 @@ public enum ImportFormat {
     /** Marque de début (et de fin) d'un fichier Parquet. */
     public static final String PARQUET_MAGIC = "PAR1";
 
+    /** Limite du CDC pour les formats qui se lisent en mémoire (§5.1 bis). */
+    private static final long HUNDRED_MEGABYTES = 100L * 1024 * 1024;
+
     private final List<String> extensions;
     private final Set<String> mediaTypes;
 
+    /** Taille maximale propre au format ; sans limite propre, c'est celle de la configuration. */
+    private final long maxSizeBytes;
+
     ImportFormat(List<String> extensions, Set<String> mediaTypes) {
+        this(extensions, mediaTypes, Long.MAX_VALUE);
+    }
+
+    ImportFormat(List<String> extensions, Set<String> mediaTypes, long maxSizeBytes) {
         this.extensions = extensions;
         this.mediaTypes = mediaTypes;
+        this.maxSizeBytes = maxSizeBytes;
     }
 
     /** Format déduit de l'extension du nom de fichier ; vide si l'extension n'est pas acceptée. */
@@ -76,5 +104,13 @@ public enum ImportFormat {
 
     public List<String> extensions() {
         return extensions;
+    }
+
+    /**
+     * Taille maximale propre à ce format, ou {@link Long#MAX_VALUE} s'il n'en a pas : c'est alors
+     * celle de la configuration qui s'applique.
+     */
+    public long maxSizeBytes() {
+        return maxSizeBytes;
     }
 }

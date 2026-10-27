@@ -214,7 +214,7 @@ class ImportControllerIT {
         mvc.perform(multipart("/api/imports").file(file("assures.pdf", CSV)).with(csrf()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.detail")
-                        .value(org.hamcrest.Matchers.containsString("csv, parquet, tsv, txt, xlsm, xlsx")));
+                        .value(org.hamcrest.Matchers.containsString("csv, ods, parquet, tsv, txt, xls, xlsm, xlsx")));
     }
 
     @Test

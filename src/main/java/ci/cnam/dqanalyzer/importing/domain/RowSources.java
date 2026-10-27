@@ -26,6 +26,8 @@ public final class RowSources {
             case SheetSettings sheet ->
                 switch (sheet.format()) {
                     case XLSX -> XlsxRowSource.open(file, sheet);
+                    case XLS -> XlsRowSource.open(file, sheet);
+                    case ODS -> OdsRowSource.open(file, sheet);
                     default -> throw new IllegalStateException("Format de tableur sans lecteur : " + sheet.format());
                 };
             // Parquet ne se lit pas ligne à ligne en Java : DuckDB le charge lui-même.

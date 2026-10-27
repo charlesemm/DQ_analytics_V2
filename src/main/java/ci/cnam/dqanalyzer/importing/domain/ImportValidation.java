@@ -49,7 +49,7 @@ public final class ImportValidation {
     public ImportFormat checkAcceptable(Path file, String originalName) {
         String fileName = fileName(originalName);
         var format = checkExtension(fileName);
-        checkSize(file);
+        checkSize(file, format);
         checkRealType(file, fileName, format);
         return format;
     }
@@ -70,7 +70,11 @@ public final class ImportValidation {
                         "import.error.extension-refusee", fileName, ImportFormat.acceptedExtensions()));
     }
 
-    private void checkSize(Path file) {
+    /**
+     * La limite retenue est la plus basse des deux : celle de la configuration et celle du format.
+     * Un .xls ou un .ods se lit en mémoire, d'où une limite propre bien plus basse (CDC §5.1 bis).
+     */
+    private void checkSize(Path file, ImportFormat format) {
         long size;
         try {
             size = Files.size(file);
@@ -80,9 +84,10 @@ public final class ImportValidation {
         if (size == 0) {
             throw new ImportRejectedException("import.error.fichier-vide");
         }
-        if (size > maxSizeBytes) {
+        long limit = Math.min(maxSizeBytes, format.maxSizeBytes());
+        if (size > limit) {
             throw new ImportRejectedException(
-                    "import.error.fichier-trop-grand", Math.max(1L, maxSizeBytes / BYTES_PER_MEGABYTE));
+                    "import.error.fichier-trop-grand", Math.max(1L, limit / BYTES_PER_MEGABYTE));
         }
     }
 

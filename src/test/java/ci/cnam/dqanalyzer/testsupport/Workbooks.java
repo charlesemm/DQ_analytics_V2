@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 /**
@@ -26,9 +28,18 @@ public final class Workbooks {
         return new Sheet(name, rows);
     }
 
-    /** Écrit le classeur et renvoie son chemin. */
+    /** Écrit un classeur Excel 2007 et suivants (.xlsx) et renvoie son chemin. */
     public static Path write(Path file, Sheet... sheets) {
-        try (var workbook = new XSSFWorkbook();
+        return write(file, new XSSFWorkbook(), sheets);
+    }
+
+    /** Écrit un classeur Excel 97-2003 (.xls) et renvoie son chemin. */
+    public static Path writeXls(Path file, Sheet... sheets) {
+        return write(file, new HSSFWorkbook(), sheets);
+    }
+
+    private static Path write(Path file, Workbook newWorkbook, Sheet... sheets) {
+        try (var workbook = newWorkbook;
                 var out = Files.newOutputStream(file)) {
             var dateStyle = workbook.createCellStyle();
             dateStyle.setDataFormat(
