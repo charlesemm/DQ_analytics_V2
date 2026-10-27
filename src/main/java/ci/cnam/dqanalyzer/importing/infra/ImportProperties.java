@@ -15,5 +15,5 @@ public record ImportProperties(Storage storage, Upload upload) {
 
     public record Storage(Path path) {}
 
-    public record Upload(DataSize maxFileSize) {}
+    public record Upload(DataSize maxFileSize, DataSize chunkSize) {}
 }
