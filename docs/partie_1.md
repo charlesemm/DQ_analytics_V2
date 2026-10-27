@@ -503,7 +503,7 @@ ENV DQ_STORAGE_PATH=/data \
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s \
-  CMD curl -fs http://localhost:8080/actuator/health || exit 1
+  CMD curl -fs "http://localhost:8080${DQ_CONTEXT_PATH:-/dq}/actuator/health" || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
 ```
@@ -3089,11 +3089,11 @@ Commandes utiles ensuite : `podman compose up -d --build app` reconstruit et rel
 
 | Adresse | Résultat attendu |
 | --- | --- |
-| http://localhost:8080 | Redirection vers la page de connexion |
+| http://localhost:8080/dq/ | Redirection vers la page de connexion (le `/dq/` vient du `context-path`, voir 14.7) |
 | Connexion avec `admin` / `Admin2026!` | Page d'accueil « Bienvenue, admin » |
 | Connexion avec `admin` / mauvais mot de passe | Message « Identifiant ou mot de passe incorrect. » |
 | Bouton « Se déconnecter » | Retour à la connexion avec « Vous êtes déconnecté. » |
-| http://localhost:8080/actuator/health | `{"status":"UP"}` |
+| http://localhost:8080/dq/actuator/health | `{"status":"UP"}` |
 | http://localhost:8025 | Interface MailPit (vide pour l'instant) |
 
 **Explication.** Chaque ligne du tableau vérifie une pièce différente : la redirection prouve que la sécurité protège tout par défaut ; la connexion réussie prouve que la base, l'entité et BCrypt fonctionnent ensemble ; le message d'erreur prouve que les textes en français sont bien lus ; la déconnexion prouve que le jeton CSRF circule (sinon elle échouerait avec une erreur 403) ; `health` prouve que l'application est supervisable.
@@ -3221,244 +3221,284 @@ Ordre conseillé des lots suivants : règles restantes → import des autres for
 
 **Explication de cet ordre.** Le moteur d'abord, car tout le reste en dépend et il se teste sans écran. Puis l'import, qui donne de vrais fichiers à analyser. Les écrans viennent quand le fonctionnement est sûr, ce qui évite de refaire des formulaires. L'upload de 2 Go et la performance arrivent à la fin, quand le circuit complet existe et peut être mesuré.
 
-## Étape 14 — Mettre DQ-Analyzer sur un serveur
+## Étape 14 — Mettre DQ-Analyzer sur le serveur `srv-gouv`
 
-L'outil peut aller sur un serveur dès que l'étape 11 passe au vert, et il vaut mieux le faire tout de suite sur un serveur de recette. Il n'a pas besoin d'un nom de domaine public ; il a besoin de HTTPS, donc idéalement d'un nom interne fourni par la DSI. Sur le serveur, tout tourne dans Podman, comme sur ton poste : PostgreSQL, l'application et un proxy HTTPS.
+L'outil peut aller sur un serveur dès que l'étape 11 passe au vert. Le serveur existe déjà : `srv-gouv.ipscnam.ci` (10.10.4.165). Il a un nom DNS, un certificat HTTPS valide et un nginx en service — mais **il héberge déjà d'autres applications, dont certaines ne t'appartiennent pas**. Toute cette étape découle de cette contrainte.
 
-### Quand mettre en ligne, et pour qui
+### 14.1 — Ce que le serveur fournit déjà
 
-| Moment | Ce qui est en ligne | Pour qui |
+| Élément | Constat (vérifié le 26 octobre 2026) | Conséquence |
 | --- | --- | --- |
-| Fin de l'étape 11 (maintenant) | Connexion et page d'accueil | Toi et la DSI : valider serveur, réseau, HTTPS, base, sauvegarde |
-| Après l'import CSV, les premières règles et le rapport | Analyses de fichiers de test | Toi et ton chef de service, en démonstration |
-| Après le lot double authentification (MFA-01 à MFA-07) et l'avis du RSSI | Analyses de vrais fichiers | Analystes et lecteurs |
+| Adresse | `10.10.4.165`, 3 ms depuis ton poste | même réseau |
+| Noms DNS | `srv-gouv.ipscnam.ci`, `socle.ipscnam.ci`, `echo.ipscnam.ci` | rien à demander à la DSI |
+| Certificat | wildcard `*.ipscnam.ci` GlobalSign, expire le 20 novembre 2026 | rien à acheter, aucune alerte navigateur |
+| Système | RHEL / Rocky 8, OpenSSH 8.0, nginx 1.14.1 | SELinux actif |
+| Ports 80 et 443 | le nginx du système, qui sert **Socle** et **ÉCHO · CNAM-CI** | on ne prend pas ces ports : on se range derrière |
+| Port 8000 | l'API d'ÉCHO, publiée sur la boucle locale seulement | le modèle à suivre |
+| Port 8081 | libre | c'est là que notre application écoutera, en local |
 
-**Explication.** Dans une DSI, obtenir un serveur, un nom DNS, un certificat et une ouverture de pare-feu prend souvent plus de temps que d'écrire le code. Déployer le socle maintenant lance ces demandes en parallèle du développement, et chaque lot suivant se déploie en une commande. En revanche, aucun vrai fichier d'assurés ne doit être chargé avant la double authentification : c'est une exigence du CDC (§5.8) et de la loi n° 2013-450.
+**Explication.** Le guide prévoyait initialement de demander un serveur, un nom DNS et un certificat à la DSI. Rien de tout cela n'est nécessaire : le nom existe, le certificat est déjà installé et couvre tout `*.ipscnam.ci`. Surtout, la machine a déjà un **portier** — le nginx du système — et deux applications rangées derrière lui, chacune avec son vhost et son port local. Socle va plus loin : il sert une seconde application sous un sous-chemin, `socle.ipscnam.ci/referentiel/`. C'est ce modèle, déjà éprouvé deux fois sur cette machine, que nous reprenons.
 
-### Avec ou sans nom de domaine
+### 14.2 — La décision : un sous-chemin derrière le portier existant
 
-| Accès | Exemple | Possible ? | Pourquoi |
-| --- | --- | --- | --- |
-| Adresse IP en HTTP | http://10.10.5.20:8080 | Non | En profil `prod`, le cookie de session est réservé au HTTPS (`cookie.secure: true`) : la connexion échoue en boucle |
-| Adresse IP en HTTPS, certificat auto-signé | https://10.10.5.20 | Oui, pour une recette rapide | Fonctionne ; le navigateur affiche une alerte de sécurité à accepter |
-| Nom interne + certificat de l'autorité interne | https://dq-analyzer.cnam.local | Recommandé | Adresse lisible, aucune alerte, rien d'exposé à Internet |
-| Nom de domaine public sur Internet | https://dq.exemple.ci | Non | Outil interne manipulant des données personnelles : il ne doit pas être joignable depuis Internet (PSSI) |
+```
+navigateur --https--> nginx du système (443, echo.ipscnam.ci)
+                        |-- /      --> 127.0.0.1:8000   ÉCHO
+                        `-- /dq/   --> 127.0.0.1:8081   nous
+```
 
-**Explication.** Un nom de domaine n'est qu'un nom lisible qui pointe vers une adresse IP ; techniquement, l'application n'en a pas besoin. Le HTTPS, lui, est obligatoire (SEC-03), et un certificat HTTPS est délivré pour un nom (ou une IP). Le plus simple est donc de demander à l'équipe réseau un nom dans le DNS interne (`dq-analyzer.cnam.local` par exemple) et un certificat signé par l'autorité interne de la CNAM, que les postes reconnaissent déjà. En attendant, une IP avec un certificat auto-signé suffit pour tester.
+Adresse finale : **https://echo.ipscnam.ci/dq/**
 
-### 14.1 — Ce qu'il faut demander à la DSI
+| On ne fait pas | Pourquoi | On fait à la place |
+| --- | --- | --- |
+| Prendre les ports 80 et 443 | couperait Socle et ÉCHO | le nginx du système relaie vers notre port local |
+| Publier notre port sur `0.0.0.0` | l'application serait offerte en clair au réseau, hors du TLS | `127.0.0.1:8081`, comme ÉCHO sur 8000 |
+| Copier le certificat wildcard | une clé privée de plus à garder, et à renouveler | le TLS est terminé par le nginx du système |
+| Monter un fichier de `/etc/nginx/` avec `:Z` | réétiquette le fichier (SELinux) et **casse ÉCHO** | on ne monte rien qui vienne de `/etc/nginx/` |
+| Recopier nos `location` dans le vhost d'ÉCHO | notre configuration vivrait dans le dépôt du voisin | un fichier à nous, appelé par une ligne `include` |
+| Installer Java, Maven ou PostgreSQL sur la machine | modifie le système pour tout le monde | tout vit dans Podman |
+| Laisser DuckDB remplir le disque | un disque plein fait tomber les voisins | `df -h` avant et après |
 
-- Un serveur Linux (Rocky/RHEL ou Ubuntu) avec Podman 4.4 ou plus et `podman-compose`, et un compte non administrateur pour l'outil.
-- Mémoire et processeur : 4 vCPU et 8 Go de RAM pour commencer, à ajuster après le test PERF-01.
-- Disque : au moins 3 × 2 Go par analyse simultanée (PERF-03), plus la base, les journaux et les sauvegardes ; 50 Go est un point de départ raisonnable.
-- L'ouverture des ports 443 (et 80, redirigé vers 443) depuis le réseau des utilisateurs.
-- Un nom DNS interne et un certificat de l'autorité interne (ou, au début, l'accord pour un certificat auto-signé).
-- Un relais SMTP interne pour les codes 2FA par e-mail (question ouverte du CDC).
+**Explication, et c'est le changement de méthode de cette étape.** La première version de ce guide donnait à DQ-Analyzer son propre nginx en conteneur, sur le port 8443 : aucune ressource partagée, mais une URL à numéro de port, une copie de la clé privée du wildcard à garder sur le disque, un port à ouvrir dans le pare-feu et un conteneur de plus. En nous rangeant derrière le portier existant, les quatre disparaissent d'un coup.
 
-### 14.2 — Récupérer le projet sur le serveur
+Le prix à payer tient en une ligne — mais une ligne dans un fichier qui sert ÉCHO : `include /etc/nginx/snippets/dq.conf;`. C'est désormais **le seul geste de l'étape qui puisse faire tomber le voisin**, et il commande une discipline : `sudo nginx -t` avant tout rechargement, `reload` et jamais `restart`, et une copie du vhost avant d'y toucher. Ce n'est pas une règle de prudence générale : un seul nginx sert les trois applications, et rechargé avec une erreur de syntaxe, il les coupe toutes les trois.
+
+### 14.3 — Vérifier les prérequis et récupérer le projet
 
 ```bash
-sudo mkdir -p /opt/dq-analyzer && sudo chown "$USER" /opt/dq-analyzer
-cd /opt/dq-analyzer
+podman --version          # attendu : 4.4 ou plus
+sudo -n nginx -t          # attendu : syntax is ok / test is successful
+df -h                     # attendu : au moins 50 Go libres
+free -g                   # attendu : 8 Go de RAM
+
+mkdir -p ~/dq-analyzer && cd ~/dq-analyzer
 git clone <URL-du-dépôt> .
 ```
 
-**Explication.** Le serveur construit lui-même l'image à partir du dépôt, avec le même `Dockerfile` que ton poste : pas besoin d'y installer Java ni Maven. `/opt` est le dossier conventionnel des applications installées à la main. Si le serveur n'a pas accès à la forge, construis l'image sur ton poste (`podman build -t dq-analyzer:0.1.0 .`), exporte-la (`podman save -o dq-analyzer.tar dq-analyzer:0.1.0`), copie le fichier (`scp`) puis charge-la sur le serveur (`podman load -i dq-analyzer.tar`).
+**Explication.** On installe dans le dossier personnel et non dans `/opt`, qui demanderait `sudo` et placerait le projet parmi les applications des autres. Si `podman` n'est pas installé, arrête-toi : l'installer modifie le système partagé. Le `sudo nginx -t` est nouveau : il vérifie d'un coup que nginx est en bon état **et** que tu as le droit d'agir sur lui — sans ce droit, les sections 14.4 et 14.8 sont impossibles, et il faut passer par l'administrateur. Le serveur construit lui-même l'image à partir du dépôt, avec le même `Dockerfile` que ton poste : ni Java ni Maven à installer.
 
-### 14.3 — Les secrets du serveur : fichier `.env`
+### 14.4 — Le relais nginx : un fichier à nous, une ligne chez le voisin
 
-Dans `/opt/dq-analyzer`, crée le fichier `.env` (il est dans le `.gitignore`, il ne sera jamais commité) :
+Notre configuration vit dans le dépôt, à `deploy/nginx/dq-dans-echo.conf` :
 
-```bash
-POSTGRES_PASSWORD=<sortie de : openssl rand -base64 24>
-DQ_DB_PASSWORD=<une autre sortie de : openssl rand -base64 24>
-DQ_MAIL_HOST=<relais SMTP interne>
-DQ_MAIL_PORT=25
+```nginx
+# « /dq » sans barre finale n'entrerait pas dans l'emplacement ci-dessous.
+location = /dq {
+    return 301 /dq/;
+}
+
+location ^~ /dq/ {
+    client_max_body_size 25m;          # un morceau d'upload (10 Mo) + marge
+    proxy_pass http://127.0.0.1:8081;  # sans chemin : l'adresse est transmise telle quelle
+
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host  $host;
+
+    proxy_read_timeout 300s;           # profilages et analyses longues
+}
 ```
 
+Il se dépose dans `/etc/nginx/snippets/`, et le vhost d'ÉCHO l'appelle :
+
 ```bash
+sudo mkdir -p /etc/nginx/snippets
+sudo cp ~/dq-analyzer/deploy/nginx/dq-dans-echo.conf /etc/nginx/snippets/dq.conf
+
+sudo cp /etc/nginx/conf.d/echo.ipscnam.ci.conf ~/echo.ipscnam.ci.conf.avant-dq
+sudo vi /etc/nginx/conf.d/echo.ipscnam.ci.conf     # ajouter, dans le server 443 :
+                                                   #     include /etc/nginx/snippets/dq.conf;
+sudo nginx -t                                      # AVANT de recharger
+sudo systemctl reload nginx
+```
+
+**Explication, point par point, car chaque détail a sa raison.**
+
+- **`snippets/` et non `conf.d/`** : les fichiers de `conf.d/` sont chargés au niveau `http`, où un `location` n'a aucun sens. nginx refuserait de démarrer — et ÉCHO tomberait avec lui.
+- **Un `include` plutôt que des lignes recopiées** : notre configuration reste dans notre dépôt, versionnée avec l'application qu'elle sert, et la modification du vhost d'ÉCHO tient en une ligne — donc en une ligne à relire, et une ligne à retirer le jour du démontage. Revers : si le fichier appelé disparaît, nginx refuse de démarrer. D'où l'ordre imposé au démontage — la ligne d'abord, le fichier ensuite.
+- **`^~ /dq/`** : coupe court à l'évaluation des emplacements par expression régulière, pour qu'aucune règle d'ÉCHO ne reprenne la main sur nos adresses — et, symétriquement, notre emplacement ne peut capter aucune adresse d'ÉCHO.
+- **`proxy_pass` sans chemin après le port** : nginx transmet alors l'adresse **telle quelle**, `/dq/` compris. C'est voulu : Tomcat attend ce préfixe (14.7). Écrire `proxy_pass http://127.0.0.1:8081/;` — une seule barre de plus — couperait le préfixe et donnerait un 404 sur toutes les pages.
+- **`client_max_body_size 25m`** : le vhost d'ÉCHO plafonne à 10 Mo, ce qui suffit à ses routes mais pas à notre import de fichiers. La valeur doit être au moins égale à la limite d'envoi de Spring.
+- **Aucun `add_header` chez nous** : nginx n'hérite plus des en-têtes d'un niveau supérieur dès qu'un niveau en déclare un. Un seul `add_header` dans notre `location` ferait perdre à nos pages **tous** les en-têtes de sécurité du vhost d'ÉCHO (HSTS, CSP, `nosniff`…). On n'en déclare donc aucun, et on hérite des siens — ils nous conviennent : nos scripts et nos styles viennent tous de notre propre origine.
+- **Plus de `X-Forwarded-Port`** : au temps du port 8443, il fallait le forcer, faute de quoi Tomcat se croyait sur 443 et renvoyait des redirections vers le nginx d'ÉCHO. Sur 443, le port par défaut, `$host` ne porte aucun numéro et le problème n'existe pas.
+- **La même ligne est versionnée dans le dépôt d'ÉCHO** (`simulateur_V5`, `deploiement/nginx/echo.ipscnam.ci.conf`), commentée. Sans cela, le prochain déploiement d'ÉCHO écraserait notre ligne et `/dq/` rendrait un 404.
+
+### 14.5 — Les secrets : fichier `.env`
+
+```bash
+cd ~/dq-analyzer
+cat > .env <<'FIN'
+POSTGRES_PASSWORD=<sortie de : openssl rand -base64 24>
+DQ_DB_PASSWORD=<une autre sortie de : openssl rand -base64 24>
+DQ_MAIL_HOST=mail.ipscnam.ci
+DQ_MAIL_PORT=25
+FIN
 chmod 600 .env
 ```
 
-**Explication.** `podman compose` lit automatiquement le fichier `.env` du dossier et remplace les `${…}` de `compose.prod.yaml`. `openssl rand -base64 24` produit un mot de passe aléatoire de 32 caractères. `chmod 600` : seul ton compte peut lire ce fichier. Ces mots de passe sont lus une première fois par ton script de création de la base (étape 7) : choisis-les avant le premier lancement.
+**Explication.** `podman compose` lit automatiquement le `.env` du dossier et remplace les `${…}` de `compose.prod.yaml`. `openssl rand -base64 24` produit un mot de passe aléatoire de 32 caractères : lance-le deux fois et recopie les deux valeurs. Ces mots de passe sont lus une première fois par le script de création de la base (étape 7), donc choisis-les avant le premier lancement. `.env` est déjà dans le `.gitignore`. Le sous-chemin, lui, a une valeur par défaut (`DQ_CONTEXT_PATH=/dq`) et n'a pas besoin d'y figurer : il ne s'écrit que pour le changer, et alors **en même temps** que le `location` de 14.4.
 
-### 14.4 — `compose.prod.yaml` (à la racine du dépôt, commité)
+### 14.6 — `compose.prod.yaml` (à la racine du dépôt, commité)
+
+Trois services au départ, deux désormais. Ce qui a changé par rapport à la version 8443 :
 
 ```yaml
-# Production : podman compose -f compose.prod.yaml up -d --build   (secrets lus dans .env, non versionné)
-name: dq-analyzer
-
-services:
-  postgres:
-    image: docker.io/library/postgres:17-alpine
-    container_name: dq-postgres
-    restart: always
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
-      DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:?à définir dans .env}
-    volumes:
-      - dq-pgdata:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro,Z
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   app:
     build: .
-    image: localhost/dq-analyzer:prod
     container_name: dq-app
     restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
+    ports:
+      # « 127.0.0.1: » en tête est la protection la plus importante de ce fichier.
+      # 8081 à l'extérieur (8000 est à ÉCHO), 8080 à l'intérieur : le port de Tomcat.
+      - "127.0.0.1:8081:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DQ_DB_URL: jdbc:postgresql://postgres:5432/dqanalyzer
-      DQ_DB_USER: dqanalyzer
-      DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:?à définir dans .env}
-      DQ_MAIL_HOST: ${DQ_MAIL_HOST:-localhost}
-      DQ_MAIL_PORT: ${DQ_MAIL_PORT:-25}
-    ports:
-      - "127.0.0.1:8080:8080"
+      DQ_CONTEXT_PATH: ${DQ_CONTEXT_PATH:-/dq}   # doit suivre le location de 14.4
+      # … base de données et relais SMTP, inchangés
     volumes:
-      - dq-storage:/data
-      - dq-logs:/app/logs
+      - dq-storage:/data        # fichiers importés et bases DuckDB (PERF-03)
+      - dq-logs:/app/logs       # journal applicatif (EXP-02)
 
-  proxy:
-    image: docker.io/library/nginx:1.27-alpine
-    container_name: dq-proxy
-    restart: always
-    depends_on:
-      - app
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
-      - ./deploy/certs:/etc/nginx/certs:ro,Z
-
-volumes:
-  dq-pgdata:
-  dq-storage:
-  dq-logs:
+  # Plus de service « proxy » : le portier est le nginx de l'hôte (14.4).
+  # Plus de montage ./deploy/certs : le TLS ne passe plus par nous.
 ```
 
-**Explication, par différence avec le `compose.yaml` de développement.**
+**Explication, par différence avec le `compose.yaml` de développement et avec la version précédente.**
 
-- **Pas de MailPit** : les e-mails partent vers le vrai relais SMTP de la CNAM.
-- **`postgres` sans `ports`** : la base n'est joignable que par les autres conteneurs, jamais depuis le réseau.
-- **`${…:?à définir dans .env}`** : si une variable manque, Podman refuse de démarrer et affiche ce message, au lieu de lancer une base sans mot de passe.
-- **`SPRING_PROFILES_ACTIVE: prod`** : `application-prod.yml` s'applique ; pas de comptes de démonstration, cookie réservé au HTTPS. Les variables `DQ_DB_*` sont celles qu'attend ce fichier.
-- **`restart: always`** : un conteneur arrêté par une erreur ou par un redémarrage de Podman repart tout seul.
-- **`app` sur `127.0.0.1:8080`** : l'application n'est pas exposée directement ; tout passe par le proxy HTTPS. Le port local sert seulement aux contrôles depuis le serveur.
-- **`dq-logs:/app/logs`** : les journaux du profil `prod` (EXP-02) sont conservés hors de l'image.
-- **`proxy` (nginx)** : reçoit le HTTPS sur le port 443, déchiffre, puis transmet la requête au conteneur `app` sur le réseau interne de Podman. Le certificat est installé à un seul endroit, et l'application n'a pas à gérer le chiffrement.
+- **Pas de MailPit** : les e-mails partent vers le vrai relais SMTP.
+- **`postgres` sans `ports`** : la base n'est joignable que par le réseau interne de Podman.
+- **`app` avec un port, mais sur la boucle locale** : c'est le seul changement de fond. Sans le préfixe `127.0.0.1:`, Podman publierait sur `0.0.0.0` et l'application serait offerte **en clair** à tout le réseau : n'importe qui pourrait court-circuiter le TLS, et un témoin de session y circulerait sans chiffrement. Restriction qui subsiste, à savoir : la machine est partagée, donc un autre compte ayant un shell dessus atteint ce port.
+- **`${…:?à définir dans .env}`** : si une variable manque, Podman refuse de démarrer au lieu de lancer une base sans mot de passe.
+- **`SPRING_PROFILES_ACTIVE: prod`** : pas de comptes de démonstration, cookie réservé au HTTPS.
+- **`restart: always`** et non `unless-stopped` : `podman-restart.service`, qui relance les conteneurs au démarrage de la machine, filtre sur `restart-policy=always`. Un conteneur en `unless-stopped` n'entrerait pas dans ce filtre — le serveur reviendrait en ligne sans nous.
 
-### 14.5 — La configuration HTTPS : `deploy/nginx.conf`
+### 14.7 — Le préfixe dans l'application : `context-path`, et le piège du JavaScript
 
-```nginx
-# Port 80 : redirige tout vers HTTPS
-server {
-    listen 80;
-    server_name _;
-    return 301 https://$host$request_uri;
-}
+Côté application, une ligne suffit — dans `application.yml`, donc valable aussi en développement :
 
-# Port 443 : HTTPS, puis transmission à l'application
-server {
-    listen 443 ssl;
-    server_name _;
+```yaml
+server:
+  servlet:
+    context-path: ${DQ_CONTEXT_PATH:/dq}
+```
 
-    ssl_certificate     /etc/nginx/certs/dq-analyzer.crt;
-    ssl_certificate_key /etc/nginx/certs/dq-analyzer.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
+**Explication.** Tomcat sert alors toute l'application sous `/dq`, et Thymeleaf préfixe de lui-même chaque `@{/…}` des gabarits : liens, feuilles de style, formulaires, `/logout`, tout suit. Deux effets de bord, l'un utile, l'autre à connaître.
 
-    client_max_body_size 25m;     # un morceau d'upload (10 Mo) + marge
+L'utile : le témoin de session est posé sur le chemin `/dq` et ne croise jamais celui d'ÉCHO, bien que les deux applications partagent désormais un nom de domaine.
 
-    location / {
-        proxy_pass http://app:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_read_timeout 300s;  # analyses longues
-    }
+Celui à connaître, et c'est **le seul vrai piège de ce changement de méthode** : Thymeleaf ne voit pas le JavaScript. Les adresses écrites à la main dans un fichier `.js` — `fetch('/api/uploads')` — visent la racine du domaine, c'est-à-dire ÉCHO, qui répond 404. Le gabarit publie donc le préfixe dans une balise `meta`, et un petit module le lit une fois pour toutes :
+
+```html
+<meta name="base-url" th:content="@{/}">
+```
+
+```javascript
+const base = (document.querySelector('meta[name="base-url"]')?.getAttribute('content') || '/')
+    .replace(/\/$/, '');
+
+export function adresse(chemin) {
+    return base + chemin;
 }
 ```
 
-**Explication.** Le premier bloc renvoie toute visite en `http://` vers `https://`. Le second présente le certificat et n'accepte que TLS 1.2 et 1.3, les versions encore sûres. `client_max_body_size` doit être au moins égal à la limite d'envoi de Spring (25 Mo), sinon nginx refuse les morceaux de fichier. Les en-têtes `X-Forwarded-*` disent à l'application que l'utilisateur est en HTTPS : grâce au réglage `forward-headers-strategy: native` de `application-prod.yml`, elle construit alors des liens et des cookies corrects.
+Les cinq adresses construites en JavaScript passent par cette fonction (`static/js/base-url.js`), et rien n'est codé en dur : la même page fonctionne sous `/dq/` comme à la racine. Le symptôme, quand on l'oublie, est reconnaissable : les pages s'affichent normalement, mais l'envoi de fichier et le suivi de chargement échouent en silence — la console du navigateur montre une requête vers `/api/…` au lieu de `/dq/api/…`.
 
-**Le certificat.** Place les deux fichiers fournis par la DSI dans `deploy/certs/` (`dq-analyzer.crt` et `dq-analyzer.key`), et ajoute la ligne `deploy/certs/` au `.gitignore` : une clé privée ne doit jamais aller dans Git. Pour une recette rapide sans certificat officiel, fabrique un certificat auto-signé pour l'IP du serveur :
+### 14.8 — Lancer
 
 ```bash
-mkdir -p deploy/certs
-openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-  -keyout deploy/certs/dq-analyzer.key -out deploy/certs/dq-analyzer.crt \
-  -subj "/CN=dq-analyzer" -addext "subjectAltName=IP:10.10.5.20"   # remplace par l'IP du serveur
+cd ~/dq-analyzer
+podman compose -f compose.prod.yaml up -d --build
+podman ps                                      # deux conteneurs "Up", dq-postgres "healthy"
 ```
 
-**Explication.** `-x509` produit directement un certificat signé par lui-même, `-nodes` laisse la clé sans phrase de passe (nginx doit la lire au démarrage), `subjectAltName` indique pour quelle adresse le certificat est valable. Le navigateur affichera une alerte, puisqu'aucune autorité ne l'a signé : c'est normal en recette.
-
-### 14.6 — Lancer
-
-Podman sans droits d'administration ne peut pas ouvrir les ports en dessous de 1024. Une fois, en administrateur :
+Pour que les conteneurs survivent à ta déconnexion et au redémarrage du serveur :
 
 ```bash
-echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee /etc/sysctl.d/90-dq-analyzer.conf
-sudo sysctl --system
-sudo loginctl enable-linger "$USER"
+loginctl enable-linger "$USER"
 systemctl --user enable --now podman-restart.service
 ```
 
-Puis, dans `/opt/dq-analyzer` :
+**Explication.** Le premier lancement prend plusieurs minutes, le temps de construire l'image. `enable-linger` permet à tes conteneurs de tourner même quand tu n'es pas connecté ; `podman-restart.service` relance au démarrage du serveur les conteneurs marqués `restart: always`. Si ces deux commandes sont refusées faute de droits, les conteneurs fonctionneront quand même, mais s'arrêteront à ta déconnexion : c'est la seule limite qui demanderait l'intervention de l'administrateur. **Plus de `firewall-cmd`** : aucun port n'est à ouvrir, le seul port exposé au réseau est le 443 du nginx du système, déjà ouvert pour ÉCHO.
 
-```bash
-podman compose -f compose.prod.yaml up -d --build
-podman ps                                          # les trois conteneurs "Up", dq-postgres et dq-app "healthy"
-curl -s http://127.0.0.1:8080/actuator/health      # {"status":"UP"}
-```
-
-**Explication.** La ligne `sysctl` autorise les comptes ordinaires à ouvrir les ports 80 et 443, et le fichier dans `/etc/sysctl.d/` rend ce réglage permanent. `enable-linger` permet à tes conteneurs de tourner même quand tu n'es pas connecté au serveur ; `podman-restart.service` relance au démarrage du serveur tous les conteneurs marqués `restart: always`. `-f compose.prod.yaml` choisit le fichier de production au lieu de `compose.yaml`.
-
-### 14.7 — Créer le premier administrateur
+### 14.9 — Créer le premier administrateur
 
 En profil `prod`, aucun compte de démonstration n'est chargé : la table `app_user` est vide. Une fois l'application démarrée (Flyway a créé la table) :
-
-1. Calcule l'empreinte BCrypt du mot de passe choisi :
 
 ```bash
 podman run --rm docker.io/library/httpd:2.4-alpine htpasswd -nbBC 12 "" 'MotDePasseChoisi'
 # affiche  :$2y$12$....   → garde tout ce qui suit le « : »
-```
 
-2. Insère le compte :
-
-```bash
 podman exec -it dq-postgres psql -U dqanalyzer -d dqanalyzer
 ```
 
 ```sql
 INSERT INTO app_user (login, full_name, email, password_hash, role)
-VALUES ('mnguessan', 'Mathieu Charles N''GUESSAN', 'prenom.nom@cnam.ci', '$2y$12$...', 'ADMIN');
+VALUES ('mnguessan', 'Mathieu Charles N''GUESSAN', 'prenom.nom@ipscnam.ci', '$2y$12$...', 'ADMIN');
 ```
 
-**Explication.** `htpasswd` est un petit outil du serveur web Apache, présent dans l'image `httpd` : `-B` choisit BCrypt, `-C 12` le coût 12 (comme `SecurityConfig`), `-n` affiche le résultat au lieu d'écrire un fichier. Spring accepte le préfixe `$2y$` comme `$2a$`. Dans l'INSERT, l'apostrophe de N'GUESSAN est doublée (`N''GUESSAN`), c'est ainsi qu'on l'écrit en SQL. Les comptes suivants se créeront depuis l'écran d'administration, quand il existera.
+**Explication.** `htpasswd` est un outil du serveur Apache, présent dans l'image `httpd` : `-B` choisit BCrypt, `-C 12` le coût 12 (comme `SecurityConfig`), `-n` affiche le résultat au lieu d'écrire un fichier. Spring accepte le préfixe `$2y$` comme `$2a$`. Dans l'INSERT, l'apostrophe de N'GUESSAN est doublée, c'est ainsi qu'on l'écrit en SQL. Les comptes suivants se créeront depuis l'écran d'administration, quand il existera.
 
-### 14.8 — Mettre à jour et sauvegarder
+### 14.10 — Vérifier : les voisins d'abord, nous ensuite
+
+```bash
+curl -sk -I https://echo.ipscnam.ci/ | head -1                      # ÉCHO : attendu 200 ou 405
+curl -sk -I https://socle.ipscnam.ci/ | head -1                     # Socle : attendu 200 ou 405
+systemctl is-active nginx                                            # attendu : active
+podman exec dq-app curl -s localhost:8080/dq/actuator/health         # attendu : {"status":"UP"}
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/dq/   # attendu : 200 ou 302
+curl -I https://echo.ipscnam.ci/dq/ | head -1                        # attendu : 200 ou 302
+```
+
+Puis, depuis ton poste : https://echo.ipscnam.ci/dq/ affiche la page de connexion, sans alerte de sécurité, et tu te connectes avec le compte créé en 14.9.
+
+**Explication.** L'ordre compte : on vérifie qu'on n'a rien cassé avant de se réjouir que ça marche — et depuis que nous partageons leur portier, « on n'a rien cassé » concerne deux applications, pas une. L'avant-dernière commande interroge l'application **sans passer par nginx** : elle sépare « l'application est en panne » de « le relais est mal branché ». La dernière est volontairement sans `-k` : si elle réussit, c'est que le certificat est pleinement validé, donc qu'aucun navigateur n'affichera d'alerte.
+
+| Symptôme | Cause | Solution |
+| --- | --- | --- |
+| `404` sur `/dq/` alors qu'ÉCHO répond | la ligne `include` manque dans le vhost | revoir 14.4 |
+| `404` sur toutes nos pages | `context-path` et `proxy_pass` désaccordés | le même `/dq` des deux côtés (14.4 et 14.7) |
+| `502 Bad Gateway` | le conteneur n'écoute pas, ou SELinux interdit à nginx de joindre un port local | `podman ps`, puis `sudo setsebool -P httpd_can_network_connect 1` |
+| ÉCHO ou Socle ne répond plus | nginx n'a pas redémarré, ou un `include` vers un fichier absent | `sudo nginx -t`, puis restaurer `~/echo.ipscnam.ci.conf.avant-dq` |
+| Pages sans style, boutons inertes | une adresse JavaScript non préfixée | console du navigateur : requête en `/api/…` au lieu de `/dq/api/…` (14.7) |
+| Le disque se remplit | DuckDB consomme 3 × la taille du fichier par analyse | surveiller `df -h`, purger le volume `dq-storage` |
+
+### 14.11 — Annuler
+
+```bash
+podman compose -f compose.prod.yaml down       # arrêter, garder la base
+podman compose -f compose.prod.yaml down -v    # tout effacer, base et fichiers importés compris
+
+# Retirer le relais, dans cet ordre : la ligne d'abord, le fichier ensuite
+sudo vi /etc/nginx/conf.d/echo.ipscnam.ci.conf     # retirer la ligne include
+sudo nginx -t && sudo systemctl reload nginx
+sudo rm /etc/nginx/snippets/dq.conf
+```
+
+**Explication.** Après la première commande, les voisins ne s'aperçoivent de rien : seul `/dq/` devient un `502`, et la ligne `include` peut rester en place — nginx démarre très bien avec un emplacement qui ne relaie vers rien. **L'ordre des trois dernières commandes, en revanche, n'est pas interchangeable** : supprimer le fichier avant d'avoir retiré la ligne laisserait un `include` vers rien, et nginx refuserait de démarrer — Socle et ÉCHO avec lui. C'est la contrepartie du confort gagné en 14.2, et la raison pour laquelle le guide de déploiement consacre une section entière (12.9) à ce démontage.
+
+### 14.12 — Mettre à jour et sauvegarder
 
 ```bash
 # Nouvelle version : récupérer le code, reconstruire et relancer l'application seule
 git pull && podman compose -f compose.prod.yaml up -d --build app
 
-# Sauvegarde de la base (à planifier chaque nuit avec cron ou un timer systemd)
+# Sauvegarde de la base (à planifier chaque nuit avec un timer systemd utilisateur)
 mkdir -p ~/backups
 podman exec dq-postgres pg_dump -U dqanalyzer -Fc dqanalyzer > ~/backups/dq-$(date +%F).dump
 ```
 
-**Explication.** Au redémarrage, Flyway applique tout seul les nouvelles migrations (`V2`, `V3`…) : la mise à jour du schéma ne demande aucune action. `pg_dump -Fc` produit une sauvegarde compressée qui se restaure avec `pg_restore`. Copie ces fichiers hors du serveur (selon la politique de sauvegarde de la DSI) : une sauvegarde sur le même disque ne protège pas d'une panne de ce disque.
+**Explication.** Au redémarrage, Flyway applique tout seul les nouvelles migrations : la mise à jour du schéma ne demande aucune action. Rien à redémarrer côté nginx : il relaie vers `127.0.0.1:8081`, une adresse fixe, et non vers un nom de conteneur dont l'IP changerait à chaque reconstruction — c'était la raison du `podman restart dq-proxy` de la version précédente. `pg_dump -Fc` produit une sauvegarde compressée qui se restaure avec `pg_restore`. Copie ces fichiers hors du serveur : une sauvegarde sur le même disque ne protège pas d'une panne de ce disque — et sur une machine partagée, elle occupe l'espace de tout le monde.
 
-Vérification : depuis ton poste, https://dq-analyzer.cnam.local (ou https://10.10.5.20) affiche la page de connexion, et tu te connectes avec le compte créé en 14.7.
+### 14.13 — Les trois échéances suivantes
+
+**Le certificat expire le 20 novembre 2026.** Il porte Socle, ÉCHO et la messagerie, donc son renouvellement est déjà un sujet pour la DSI. Nous n'avons plus rien à refaire ce jour-là : depuis que le TLS est terminé par le nginx du système, aucune copie de la clé ne traîne chez nous.
+
+**Le vhost d'ÉCHO est partagé.** Toute évolution de `deploiement/nginx/echo.ipscnam.ci.conf`, dans le dépôt `simulateur_V5`, doit conserver la ligne `include /etc/nginx/snippets/dq.conf;`. C'est la seule dépendance entre les deux projets, et elle tient dans un sens unique : ÉCHO ignore tout de nous, nous dépendons de son vhost. À dire à qui déploie ÉCHO. Le jour où DQ-Analyzer méritera son propre nom, `dq.ipscnam.ci` → 10.10.4.165 suffirait — le wildcard le couvre — avec un vhost copié sur celui d'ÉCHO et `DQ_CONTEXT_PATH=/` : la dépendance disparaîtrait alors d'elle-même.
+
+**Aucun vrai fichier d'assurés avant la double authentification.** Exigence du CDC (§5.8) et de la loi n° 2013-450 : jusqu'au lot MFA-01 à MFA-07 et à l'avis du RSSI, on déploie et on démontre avec des fichiers de test.
 
 ## Dépannage
 
@@ -3472,7 +3512,7 @@ Vérification : depuis ton poste, https://dq-analyzer.cnam.local (ou https://10.
 | `Migration checksum mismatch for migration version 1` | `V1__init_schema.sql` modifié après son exécution | En dev uniquement : `podman compose down -v` (efface la base locale) puis `podman compose up -d`. Plus tard, toute correction = nouvelle migration `V2__…` |
 | `Schema-validation: missing column` | L'entité Java et le SQL ne correspondent pas | Compare les noms de colonnes de l'entité (`@Column(name=…)`) avec la migration |
 | Connexion toujours refusée avec `admin` | Profil `dev` non actif : comptes non chargés | Les logs doivent afficher `The following 1 profile is active: "dev"` ; sinon lance avec `-Dspring-boot.run.profiles=dev` |
-| Page de connexion sans style | Bootstrap non servi | Ouvre http://localhost:8080/webjars/bootstrap/css/bootstrap.min.css : une 404 signifie que `webjars-locator-lite` ou `bootstrap` manque dans le `pom.xml` |
+| Page de connexion sans style | Bootstrap non servi | Ouvre http://localhost:8080/dq/webjars/bootstrap/css/bootstrap.min.css : une 404 signifie que `webjars-locator-lite` ou `bootstrap` manque dans le `pom.xml` |
 | Accents remplacés par des `?` ou `Ã©` | Fichier enregistré en Windows-1252 | Réenregistre le fichier en UTF-8 (étape 6) |
 | `Could not find a valid Docker environment` (tests d'intégration) | Testcontainers ne trouve pas Podman | Linux : `systemctl --user enable --now podman.socket`, puis `export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` et `export TESTCONTAINERS_RYUK_DISABLED=true`. Windows/macOS : active la compatibilité Docker dans Podman Desktop, puis relance le terminal |
 | `The following files had format violations` | Code non formaté | `./mvnw spotless:apply`, puis relance |

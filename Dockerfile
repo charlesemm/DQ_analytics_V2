@@ -27,7 +27,10 @@ ENV DQ_STORAGE_PATH=/data \
     JAVA_OPTS="-XX:MaxRAMPercentage=75"
 
 EXPOSE 8080
+# Le sous-chemin fait partie de l'adresse : l'application est servie sous « /dq » derrière
+# le nginx de l'hote (server.servlet.context-path). Sans lui, /actuator/health rend un 404
+# et le conteneur serait declare « unhealthy » alors qu'il va tres bien.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s \
-  CMD curl -fs http://localhost:8080/actuator/health || exit 1
+  CMD curl -fs "http://localhost:8080${DQ_CONTEXT_PATH:-/dq}/actuator/health" || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

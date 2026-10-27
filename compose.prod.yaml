@@ -1,0 +1,73 @@
+# Production, serveur srv-gouv.ipscnam.ci : podman compose -f compose.prod.yaml up -d --build
+# Les secrets sont lus dans le fichier .env du dossier (non versionné, chmod 600).
+#
+# Machine partagée : le nginx de l'HÔTE occupe déjà 80 et 443 pour socle.ipscnam.ci et
+# echo.ipscnam.ci. C'est lui le portier, comme pour Socle et ÉCHO avant nous — et non plus
+# un nginx à nous sur le port 8443. DQ-Analyzer s'ajoute au vhost d'ÉCHO sous le chemin
+# « /dq/ », à la manière de socle.ipscnam.ci/referentiel/ :
+#
+#   navigateur ──https──▶ nginx de l'hôte (443, echo.ipscnam.ci)
+#                           ├── /        ──▶ 127.0.0.1:8000   ÉCHO
+#                           └── /dq/     ──▶ 127.0.0.1:8081   nous
+#
+# Conséquences, toutes visibles plus bas : plus de service « proxy », plus de certificats
+# dans ce dépôt (le TLS est terminé par l'hôte, avec le wildcard *.ipscnam.ci déjà en place),
+# et un seul port publié — sur la BOUCLE LOCALE seulement.
+name: dq-analyzer
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17-alpine
+    container_name: dq-postgres
+    restart: always
+    # Aucun "ports" : la base n'est joignable que par le réseau interne de Podman.
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?à définir dans .env}
+      # Lu par db/init/01-create-database.sh, au premier démarrage seulement
+      DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:?à définir dans .env}
+    volumes:
+      - dq-pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro,Z
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: localhost/dq-analyzer:prod
+    container_name: dq-app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # « 127.0.0.1: » en tête n'est pas décoratif : sans ce préfixe, Podman publierait sur
+      # 0.0.0.0 et l'application serait offerte EN CLAIR à tout le réseau, court-circuitant
+      # le TLS de l'hôte — un témoin de session y circulerait sans chiffrement. Lié à la
+      # boucle locale, seul un processus de srv-gouv l'atteint, et nginx est le seul à le faire.
+      #
+      # 8081 à l'extérieur : 8000 appartient à ÉCHO. 8080 à l'intérieur : le port de Tomcat.
+      - "127.0.0.1:8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DQ_DB_URL: jdbc:postgresql://postgres:5432/dqanalyzer
+      DQ_DB_USER: dqanalyzer
+      DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:?à définir dans .env}
+      DQ_MAIL_HOST: ${DQ_MAIL_HOST:-localhost}
+      DQ_MAIL_PORT: ${DQ_MAIL_PORT:-25}
+      # Doit rester identique au chemin relayé par deploy/nginx/dq-dans-echo.conf.
+      # Changer l'un sans l'autre donne un 404 sur toutes les pages.
+      DQ_CONTEXT_PATH: ${DQ_CONTEXT_PATH:-/dq}
+    volumes:
+      - dq-storage:/data        # fichiers importés et bases DuckDB (PERF-03)
+      - dq-logs:/app/logs       # journal applicatif (EXP-02)
+
+  # Le portier n'est pas ici : c'est le nginx de l'hôte, auquel on ajoute l'emplacement
+  # décrit par deploy/nginx/dq-dans-echo.conf. Voir l'en-tête de ce fichier.
+
+volumes:
+  dq-pgdata:
+  dq-storage:
+  dq-logs:
