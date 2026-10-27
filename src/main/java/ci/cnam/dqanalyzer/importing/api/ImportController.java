@@ -3,6 +3,7 @@ package ci.cnam.dqanalyzer.importing.api;
 import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import java.io.IOException;
 import java.net.URI;
@@ -78,6 +79,8 @@ class ImportController {
         return switch (detected) {
             case DelimitedSettings delimited -> correctDelimited(delimited, delimiter, charset, hasHeader);
             case SheetSettings sheetSettings -> correctSheet(sheetSettings, sheet, headerRow, hasHeader);
+            // Un fichier Parquet porte son schéma : il n'y a rien à corriger.
+            case ParquetSettings parquet -> parquet;
         };
     }
 

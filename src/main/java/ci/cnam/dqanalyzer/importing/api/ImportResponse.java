@@ -4,6 +4,7 @@ import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportStatus;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 
@@ -51,6 +52,19 @@ record ImportResponse(
                         sheet.sheetName(),
                         sheet.headerRow(),
                         sheet.hasHeader(),
+                        ImportStatus.RUNNING);
+            case ParquetSettings parquet ->
+                new ImportResponse(
+                        received.sourceFileId(),
+                        received.originalName(),
+                        received.sizeBytes(),
+                        received.sha256(),
+                        parquet.format(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        parquet.hasHeader(),
                         ImportStatus.RUNNING);
         };
     }

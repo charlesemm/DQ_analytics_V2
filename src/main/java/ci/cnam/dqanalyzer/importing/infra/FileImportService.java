@@ -5,6 +5,7 @@ import ci.cnam.dqanalyzer.importing.ImportProgress;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import ci.cnam.dqanalyzer.importing.domain.CsvFormatDetector;
@@ -105,6 +106,7 @@ class FileImportService implements ImportService {
         return switch (format) {
             case DELIMITED -> detector.detect(file);
             case XLSX -> SheetSettings.defaults(format);
+            case PARQUET -> new ParquetSettings();
         };
     }
 

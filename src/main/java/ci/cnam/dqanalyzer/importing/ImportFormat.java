@@ -26,7 +26,17 @@ public enum ImportFormat {
             Set.of(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     "application/vnd.ms-excel.sheet.macroEnabled.12",
-                    "application/x-tika-ooxml"));
+                    "application/x-tika-ooxml")),
+
+    /**
+     * Parquet : aucun paramètre, le fichier porte son schéma. Il se reconnaît à ses quatre premiers
+     * octets, « PAR1 », et non à son type de contenu, que Tika ne distingue pas d'un binaire
+     * quelconque.
+     */
+    PARQUET(List.of("parquet"), Set.of("application/vnd.apache.parquet", "application/x-parquet"));
+
+    /** Marque de début (et de fin) d'un fichier Parquet. */
+    public static final String PARQUET_MAGIC = "PAR1";
 
     private final List<String> extensions;
     private final Set<String> mediaTypes;

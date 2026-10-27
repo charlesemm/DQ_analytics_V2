@@ -12,6 +12,8 @@ import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -140,6 +142,29 @@ class ImportControllerIT {
 
     @Test
     @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_fichier_parquet(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(directory);
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "assures.parquet", "application/octet-stream", Files.readAllBytes(parquet)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("PARQUET"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
     void le_separateur_choisi_par_l_analyste_prime_sur_la_detection() throws Exception {
         mvc.perform(multipart("/api/imports")
                         .file(file("mixte.csv", "a,b;c\n1,2;3\n"))
@@ -188,7 +213,8 @@ class ImportControllerIT {
     void un_format_non_pris_en_charge_est_refuse() throws Exception {
         mvc.perform(multipart("/api/imports").file(file("assures.pdf", CSV)).with(csrf()))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("csv, tsv, txt")));
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.containsString("csv, parquet, tsv, txt, xlsm, xlsx")));
     }
 
     @Test
@@ -213,6 +239,17 @@ class ImportControllerIT {
             Thread.sleep(50);
         }
         throw new AssertionError("L'import " + id + " ne s'est pas terminé dans le délai imparti");
+    }
+
+    /** Un fichier Parquet d'essai, écrit par DuckDB lui-même. */
+    private static Path parquet(Path directory) throws SQLException {
+        Path file = directory.resolve("assures.parquet");
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:");
+                var statement = connection.createStatement()) {
+            statement.execute("COPY (SELECT * FROM (VALUES ('1', 'Koné'), ('2', 'Yao')) AS t(id, nom)) TO '"
+                    + file.toAbsolutePath().toString().replace('\\', '/') + "' (FORMAT PARQUET)");
+        }
+        return file;
     }
 
     private static MockMultipartFile file(String name, String content) {

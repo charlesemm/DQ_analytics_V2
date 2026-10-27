@@ -7,6 +7,7 @@ import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
@@ -33,7 +34,8 @@ class DuckDbTableLoaderTest {
     private static final DelimitedSettings SEMICOLON_UTF8 = new DelimitedSettings("UTF-8", ';', '"', true);
 
     private final DuckDbDatabases databases = new DuckDbDatabases();
-    private final DuckDbTableLoader loader = new DuckDbTableLoader(databases);
+    private final DuckDbParquetLoader parquetLoader = new DuckDbParquetLoader(databases);
+    private final DuckDbTableLoader loader = new DuckDbTableLoader(databases, parquetLoader);
 
     @Test
     void charge_les_lignes_avec_leur_numero_d_origine(@TempDir Path directory) throws Exception {
@@ -185,6 +187,34 @@ class DuckDbTableLoaderTest {
     }
 
     @Test
+    void charge_un_fichier_parquet_en_numerotant_les_lignes_a_partir_de_un(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(
+                directory, "SELECT * FROM (VALUES ('1', 'Koné', 'Abidjan'), ('2', 'Yao', '')) AS t(id, nom, ville)");
+
+        var imported = loader.load(parquet, new ParquetSettings(), directory.resolve("parquet.duckdb"), "ds_13");
+
+        assertThat(imported.columns()).containsExactly("id", "nom", "ville");
+        assertThat(imported.rowCount()).isEqualTo(2);
+        assertThat(imported.raggedRowCount()).isZero();
+        assertThat(rows(imported, "_row_num, id, nom"))
+                .containsExactly(List.of("1", "1", "Koné"), List.of("2", "2", "Yao"));
+        assertThat(count(imported, "ville IS NULL")).isEqualTo(1);
+    }
+
+    @Test
+    void refuse_un_fichier_parquet_sans_aucune_ligne(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(
+                directory,
+                "SELECT * FROM (VALUES ('1', 'Koné', 'Abidjan')) AS t(id, nom, ville)" + " WHERE id IS NULL");
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(
+                        () -> loader.load(parquet, new ParquetSettings(), directory.resolve("vide.duckdb"), "ds_14"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.aucune-donnee");
+    }
+
+    @Test
     void refuse_un_fichier_sans_aucune_ligne_de_donnee(@TempDir Path directory) {
         assertThatExceptionOfType(ImportRejectedException.class)
                 .isThrownBy(() ->
@@ -232,6 +262,17 @@ class DuckDbTableLoaderTest {
         assertThat(reportedPercents).isSorted().allSatisfy(percent -> assertThat(percent)
                 .isBetween(0, 99));
         assertThat(count(imported, "_row_num = " + (expectedRows + 1))).isEqualTo(1);
+    }
+
+    /** Fabrique un fichier Parquet d'essai : DuckDB sait aussi l'écrire, aucune bibliothèque en plus. */
+    private Path parquet(Path directory, String query) throws SQLException {
+        Path file = directory.resolve("donnees.parquet");
+        try (var connection = databases.open(directory.resolve("source.duckdb"));
+                var statement = connection.createStatement()) {
+            statement.execute("COPY (" + query + ") TO '"
+                    + file.toAbsolutePath().toString().replace('\\', '/') + "' (FORMAT PARQUET)");
+        }
+        return file;
     }
 
     private Path csv(Path directory, String content) throws IOException {

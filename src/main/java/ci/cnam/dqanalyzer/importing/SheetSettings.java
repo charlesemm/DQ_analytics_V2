@@ -1,5 +1,6 @@
 package ci.cnam.dqanalyzer.importing;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.EnumSet;
 import java.util.Set;
 
@@ -34,6 +35,7 @@ public record SheetSettings(ImportFormat format, String sheetName, int headerRow
         return new SheetSettings(format, null, 1);
     }
 
+    @JsonIgnore
     @Override
     public boolean hasHeader() {
         return headerRow > NO_HEADER;

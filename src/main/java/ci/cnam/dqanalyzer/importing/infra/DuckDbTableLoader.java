@@ -4,12 +4,12 @@ import ci.cnam.dqanalyzer.importing.ImportProgressListener;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.domain.RowSource;
 import ci.cnam.dqanalyzer.importing.domain.RowSources;
 import ci.cnam.dqanalyzer.rules.Dataset;
 import ci.cnam.dqanalyzer.shared.duckdb.DuckDbIdentifiers;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -52,9 +52,11 @@ public class DuckDbTableLoader {
     private static final Pattern GENERATED_TABLE_NAME = Pattern.compile("[a-z_][a-z0-9_]{0,62}");
 
     private final DuckDbDatabases databases;
+    private final DuckDbParquetLoader parquetLoader;
 
-    public DuckDbTableLoader(DuckDbDatabases databases) {
+    DuckDbTableLoader(DuckDbDatabases databases, DuckDbParquetLoader parquetLoader) {
         this.databases = Objects.requireNonNull(databases, "databases");
+        this.parquetLoader = Objects.requireNonNull(parquetLoader, "parquetLoader");
     }
 
     public ImportedTable load(Path file, ImportSettings settings, Path database, String tableName) {
@@ -73,6 +75,9 @@ public class DuckDbTableLoader {
             Path database,
             String tableName,
             ImportProgressListener progressListener) {
+        if (settings instanceof ParquetSettings) {
+            return parquetLoader.load(file, database, tableName, progressListener);
+        }
         try (var source = RowSources.open(file, settings)) {
             return load(source, database, tableName, progressListener);
         } catch (IOException e) {
@@ -92,7 +97,7 @@ public class DuckDbTableLoader {
         if (!GENERATED_TABLE_NAME.matcher(tableName).matches()) {
             throw new IllegalArgumentException("Nom de table non conforme : " + tableName);
         }
-        deleteQuietly(database);
+        databases.delete(database);
         try (var connection = databases.open(database)) {
             var columns = source.columns();
             createTable(connection, tableName, columns);
@@ -102,10 +107,10 @@ public class DuckDbTableLoader {
             }
             return new ImportedTable(database, tableName, columns, loaded.rows(), loaded.raggedRows());
         } catch (SQLException e) {
-            deleteQuietly(database);
+            databases.delete(database);
             throw new IllegalStateException("Chargement impossible dans la table " + tableName, e);
         } catch (RuntimeException e) {
-            deleteQuietly(database); // une base à moitié chargée ne doit pas rester sur le disque
+            databases.delete(database); // une base à moitié chargée ne doit pas rester sur le disque
             throw e;
         }
     }
@@ -155,15 +160,6 @@ public class DuckDbTableLoader {
         }
         try (var statement = connection.createStatement()) {
             statement.execute(ddl.append(')').toString());
-        }
-    }
-
-    private static void deleteQuietly(Path database) {
-        try {
-            Files.deleteIfExists(database);
-            Files.deleteIfExists(Path.of(database + ".wal"));
-        } catch (IOException e) {
-            // Rien à faire de plus : le fichier sera purgé avec le répertoire de travail.
         }
     }
 

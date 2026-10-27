@@ -64,6 +64,25 @@ class ImportValidationTest {
     }
 
     @Test
+    void accepte_un_fichier_parquet_a_sa_marque_de_debut(@TempDir Path directory) throws IOException {
+        Path parquet = directory.resolve("assures.parquet");
+        Files.write(parquet, "PAR1donnees".getBytes(StandardCharsets.US_ASCII));
+
+        assertThat(validation.checkAcceptable(parquet, "assures.parquet")).isEqualTo(ImportFormat.PARQUET);
+    }
+
+    @Test
+    void refuse_un_fichier_parquet_sans_sa_marque_de_debut(@TempDir Path directory) throws IOException {
+        Path faux = directory.resolve("assures.parquet");
+        Files.writeString(faux, "id;nom\n1;Koné\n", StandardCharsets.UTF_8);
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(() -> validation.checkAcceptable(faux, "assures.parquet"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.type-inattendu");
+    }
+
+    @Test
     void refuse_une_extension_non_prevue() {
         assertThatExceptionOfType(ImportRejectedException.class)
                 .isThrownBy(() -> validation.checkAcceptable(fixture("utf8_virgule.csv"), "donnees.pdf"))

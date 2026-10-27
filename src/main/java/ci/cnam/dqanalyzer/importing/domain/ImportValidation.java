@@ -3,8 +3,10 @@ package ci.cnam.dqanalyzer.importing.domain;
 import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Objects;
 import org.apache.tika.detect.DefaultDetector;
 import org.apache.tika.detect.Detector;
@@ -86,6 +88,10 @@ public final class ImportValidation {
 
     /** Type réel déduit du contenu (Tika), le nom du fichier ne servant que d'indice. */
     private void checkRealType(Path file, String fileName, ImportFormat format) {
+        if (format == ImportFormat.PARQUET) {
+            checkParquetMagic(file);
+            return;
+        }
         var metadata = new Metadata();
         metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, fileName);
         try (var stream = TikaInputStream.get(file)) {
@@ -95,6 +101,21 @@ public final class ImportValidation {
             // son contenu (text/x-matlab pour des nombres, par exemple) : la famille suffit.
             boolean textual = format == ImportFormat.DELIMITED && "text".equals(mediaType.getType());
             if (!textual && !format.accepts(baseType)) {
+                throw new ImportRejectedException("import.error.type-inattendu");
+            }
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
+        }
+    }
+
+    /**
+     * Un fichier Parquet commence par « PAR1 ». Tika ne sait pas le distinguer d'un binaire
+     * quelconque : ces quatre octets sont donc le seul contrôle de contenu qui ait du sens ici.
+     */
+    private static void checkParquetMagic(Path file) {
+        var magic = ImportFormat.PARQUET_MAGIC.getBytes(StandardCharsets.US_ASCII);
+        try (var in = Files.newInputStream(file)) {
+            if (!Arrays.equals(in.readNBytes(magic.length), magic)) {
                 throw new ImportRejectedException("import.error.type-inattendu");
             }
         } catch (IOException e) {

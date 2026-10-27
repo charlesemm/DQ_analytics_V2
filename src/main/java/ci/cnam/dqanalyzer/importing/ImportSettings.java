@@ -15,9 +15,10 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@type")
 @JsonSubTypes({
     @JsonSubTypes.Type(value = DelimitedSettings.class, name = "DELIMITED"),
-    @JsonSubTypes.Type(value = SheetSettings.class, name = "SHEET")
+    @JsonSubTypes.Type(value = SheetSettings.class, name = "SHEET"),
+    @JsonSubTypes.Type(value = ParquetSettings.class, name = "PARQUET")
 })
-public sealed interface ImportSettings permits DelimitedSettings, SheetSettings {
+public sealed interface ImportSettings permits DelimitedSettings, SheetSettings, ParquetSettings {
 
     /** Format que ces paramètres décrivent. */
     ImportFormat format();

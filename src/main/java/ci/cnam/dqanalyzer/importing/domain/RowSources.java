@@ -2,6 +2,7 @@ package ci.cnam.dqanalyzer.importing.domain;
 
 import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import java.nio.file.Path;
 
@@ -27,6 +28,8 @@ public final class RowSources {
                     case XLSX -> XlsxRowSource.open(file, sheet);
                     default -> throw new IllegalStateException("Format de tableur sans lecteur : " + sheet.format());
                 };
+            // Parquet ne se lit pas ligne à ligne en Java : DuckDB le charge lui-même.
+            case ParquetSettings parquet -> throw new IllegalStateException("Parquet se charge par DuckDB");
         };
     }
 }
