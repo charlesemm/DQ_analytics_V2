@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -304,6 +305,90 @@ class ImportControllerIT {
     }
 
     @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_analyste_regarde_l_apercu_puis_lance_le_chargement() throws Exception {
+        long id = receive("assures.csv", CSV);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(jsonPath("$.status").value("PENDING")); // rien n'est chargé tant qu'il regarde
+        mvc.perform(get("/api/imports/{id}/preview", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("id", "nom", "ville")))
+                .andExpect(jsonPath("$.rows.length()").value(3))
+                .andExpect(jsonPath("$.rows[0].number").value(2))
+                .andExpect(jsonPath("$.rows[0].values[1]").value("Koné Aminata"))
+                .andExpect(jsonPath("$.truncated").value(false));
+
+        mvc.perform(post("/api/imports/{id}/load", id).with(csrf())).andExpect(status().isAccepted());
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(3));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_s_arrete_a_cinquante_lignes() throws Exception {
+        var contenu = new StringBuilder("id;nom\n");
+        for (int ligne = 1; ligne <= 60; ligne++) {
+            contenu.append(ligne).append(";nom").append(ligne).append('\n');
+        }
+        long id = receive("assures.csv", contenu.toString());
+
+        mvc.perform(get("/api/imports/{id}/preview", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows.length()").value(50))
+                .andExpect(jsonPath("$.truncated").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_suit_le_separateur_que_l_analyste_corrige() throws Exception {
+        long id = receive("mixte.csv", "a,b;c\n1,2;3\n");
+
+        mvc.perform(get("/api/imports/{id}/preview", id).param("delimiter", "COMMA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("a", "b;c")))
+                .andExpect(jsonPath("$.settings.delimiter").value(","));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_d_un_classeur_donne_la_liste_des_feuilles(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet("Notice", List.of(List.of("mode d'emploi"))),
+                Workbooks.sheet("Assurés", List.of(List.of("id", "nom"), List.of("1", "Koné"))));
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "assures.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                Files.readAllBytes(classeur)))
+                        .param("load", "false")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+
+        mvc.perform(get("/api/imports/{id}/preview", id).param("sheet", "Assurés"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sheetNames").value(org.hamcrest.Matchers.contains("Notice", "Assurés")))
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("id", "nom")))
+                .andExpect(jsonPath("$.rows[0].number").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "lecteur-it", roles = "READER")
+    void un_lecteur_ne_peut_voir_ni_l_apercu_ni_lancer_un_chargement() throws Exception {
+        mvc.perform(get("/api/imports/{id}/preview", 1)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/imports/{id}/load", 1).with(csrf())).andExpect(status().isForbidden());
+    }
+
+    @Test
     @WithMockUser(username = "lecteur-it", roles = "READER")
     void un_lecteur_ne_peut_pas_importer() throws Exception {
         mvc.perform(multipart("/api/imports").file(file("assures.csv", CSV)).with(csrf()))
@@ -380,6 +465,20 @@ class ImportControllerIT {
                     + file.toAbsolutePath().toString().replace('\\', '/') + "' (FORMAT PARQUET)");
         }
         return file;
+    }
+
+    /** Reçoit un fichier sans lancer son chargement : l'analyste va d'abord regarder l'aperçu. */
+    private long receive(String name, String content) throws Exception {
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(file(name, content))
+                        .param("load", "false")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+        return json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
     }
 
     private static MockMultipartFile file(String name, String content) {

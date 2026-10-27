@@ -4,6 +4,7 @@ import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.FixedWidthSettings;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ImportStatus;
 import ci.cnam.dqanalyzer.importing.JsonSettings;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,17 +44,49 @@ class ImportController {
 
     /**
      * @param corrections ce que l'analyste corrige de la détection ; tout est facultatif
+     * @param load faux pour s'arrêter après la réception, le temps de regarder l'aperçu (IMP-04) et
+     *     de corriger les paramètres ; le chargement est alors lancé par {@code POST /{id}/load}
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
     ResponseEntity<ImportResponse> upload(
-            @RequestPart("file") MultipartFile file, @ModelAttribute ImportCorrections corrections) throws IOException {
+            @RequestPart("file") MultipartFile file,
+            @ModelAttribute ImportCorrections corrections,
+            @RequestParam(defaultValue = "true") boolean load)
+            throws IOException {
         var received = imports.receive(file.getInputStream(), file.getOriginalFilename());
         var retained = correct(received.detectedSettings(), corrections);
-        imports.startLoad(received.sourceFileId(), retained);
+        if (load) {
+            imports.startLoad(received.sourceFileId(), retained);
+        }
         return ResponseEntity.accepted()
                 .location(URI.create("/api/imports/" + received.sourceFileId()))
-                .body(ImportResponse.of(received, retained));
+                .body(ImportResponse.of(received, retained, load ? ImportStatus.RUNNING : ImportStatus.PENDING));
+    }
+
+    /**
+     * Les {@value ci.cnam.dqanalyzer.importing.ImportPreview#ROWS} premières lignes telles que les
+     * paramètres donnés les donneraient (IMP-04). Rien n'est chargé ni enregistré : l'analyste peut
+     * demander autant d'aperçus qu'il veut en changeant de séparateur, de feuille ou de gabarit.
+     */
+    @GetMapping("/{sourceFileId}/preview")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
+    PreviewResponse preview(@PathVariable long sourceFileId, @ModelAttribute ImportCorrections corrections) {
+        var retained = correct(imports.settingsOf(sourceFileId), corrections);
+        return PreviewResponse.of(
+                retained, imports.sheetNamesOf(sourceFileId), imports.preview(sourceFileId, retained));
+    }
+
+    /** Lance le chargement d'un fichier déjà reçu, avec les paramètres que l'analyste a validés. */
+    @PostMapping("/{sourceFileId}/load")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
+    ResponseEntity<ImportStatusResponse> load(
+            @PathVariable long sourceFileId, @ModelAttribute ImportCorrections corrections) {
+        var retained = correct(imports.settingsOf(sourceFileId), corrections);
+        imports.startLoad(sourceFileId, retained);
+        return ResponseEntity.accepted()
+                .location(URI.create("/api/imports/" + sourceFileId))
+                .body(ImportStatusResponse.of(imports.progressOf(sourceFileId)));
     }
 
     @GetMapping("/{sourceFileId}")

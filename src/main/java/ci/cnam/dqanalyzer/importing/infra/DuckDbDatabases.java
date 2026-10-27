@@ -25,6 +25,11 @@ public class DuckDbDatabases {
         return DriverManager.getConnection(JDBC_PREFIX + database.toAbsolutePath());
     }
 
+    /** Base temporaire en mémoire : pour les lectures qui ne gardent rien, comme l'aperçu (IMP-04). */
+    public Connection openInMemory() throws SQLException {
+        return DriverManager.getConnection(JDBC_PREFIX);
+    }
+
     /**
      * Efface la base et son journal. Un import écrit toujours une base neuve : un fichier qui
      * porterait déjà ce nom est le résidu d'un chargement abandonné, et sa table ferait échouer la

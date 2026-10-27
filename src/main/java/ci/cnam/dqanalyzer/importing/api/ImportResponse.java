@@ -21,7 +21,7 @@ record ImportResponse(
         ImportSettings settings,
         ImportStatus status) {
 
-    static ImportResponse of(ReceivedFile received, ImportSettings retained) {
+    static ImportResponse of(ReceivedFile received, ImportSettings retained, ImportStatus status) {
         return new ImportResponse(
                 received.sourceFileId(),
                 received.originalName(),
@@ -30,6 +30,6 @@ record ImportResponse(
                 retained.format(),
                 retained.hasHeader(),
                 retained,
-                ImportStatus.RUNNING);
+                status);
     }
 }

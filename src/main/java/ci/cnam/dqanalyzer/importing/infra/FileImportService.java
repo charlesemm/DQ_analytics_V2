@@ -2,6 +2,8 @@ package ci.cnam.dqanalyzer.importing.infra;
 
 import ci.cnam.dqanalyzer.importing.FixedWidthSettings;
 import ci.cnam.dqanalyzer.importing.ImportFormat;
+import ci.cnam.dqanalyzer.importing.ImportPreview;
+import ci.cnam.dqanalyzer.importing.ImportPreview.PreviewRow;
 import ci.cnam.dqanalyzer.importing.ImportProgress;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportService;
@@ -12,6 +14,8 @@ import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import ci.cnam.dqanalyzer.importing.XmlSettings;
 import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
+import ci.cnam.dqanalyzer.importing.domain.RowSources;
+import ci.cnam.dqanalyzer.importing.domain.SheetNames;
 import ci.cnam.dqanalyzer.importing.domain.SingleEntryArchive;
 import ci.cnam.dqanalyzer.importing.domain.SourceFile;
 import ci.cnam.dqanalyzer.importing.domain.TextFormatDetector;
@@ -19,6 +23,8 @@ import ci.cnam.dqanalyzer.security.CurrentUserProvider;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
 import org.slf4j.Logger;
@@ -49,6 +55,7 @@ class FileImportService implements ImportService {
     private final ImportValidation validation;
     private final TextFormatDetector detector;
     private final DuckDbTableLoader loader;
+    private final DuckDbParquetLoader parquetLoader;
     private final CurrentUserProvider currentUser;
     private final ObjectMapper json;
     private final MessageSource messages;
@@ -60,6 +67,7 @@ class FileImportService implements ImportService {
             ImportValidation validation,
             TextFormatDetector detector,
             DuckDbTableLoader loader,
+            DuckDbParquetLoader parquetLoader,
             CurrentUserProvider currentUser,
             ObjectMapper json,
             MessageSource messages,
@@ -69,6 +77,7 @@ class FileImportService implements ImportService {
         this.validation = validation;
         this.detector = detector;
         this.loader = loader;
+        this.parquetLoader = parquetLoader;
         this.currentUser = currentUser;
         this.json = json;
         this.messages = messages;
@@ -170,6 +179,45 @@ class FileImportService implements ImportService {
             // L.archive a déjà été ouverte : le format retenu est celui du fichier qu.elle contient.
             case ZIP -> throw new IllegalStateException("Une archive ne se lit pas directement");
         };
+    }
+
+    @Override
+    public ImportSettings settingsOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        return json.readValue(sourceFile.getImportSettings(), ImportSettings.class);
+    }
+
+    @Override
+    public List<String> sheetNamesOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        return SheetNames.of(Path.of(sourceFile.getFileToRead()), sourceFile.getFormat());
+    }
+
+    @Override
+    public ImportPreview preview(long sourceFileId, ImportSettings settings) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        Path file = Path.of(sourceFile.getFileToRead());
+        if (settings instanceof ParquetSettings) {
+            return parquetLoader.preview(file, ImportPreview.ROWS);
+        }
+        try (var source = RowSources.open(file, settings)) {
+            var rows = new ArrayList<PreviewRow>();
+            boolean truncated = false;
+            while (source.next()) {
+                if (rows.size() == ImportPreview.ROWS) {
+                    truncated = true; // la ligne lue en trop prouve qu'il en reste
+                    break;
+                }
+                var values = new ArrayList<String>(source.columns().size());
+                for (int column = 0; column < source.columns().size(); column++) {
+                    values.add(source.field(column));
+                }
+                rows.add(new PreviewRow(source.rowNumber(), values));
+            }
+            return new ImportPreview(source.columns(), rows, truncated);
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
+        }
     }
 
     @Async

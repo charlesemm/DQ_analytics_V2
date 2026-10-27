@@ -1,5 +1,7 @@
 package ci.cnam.dqanalyzer.importing.infra;
 
+import ci.cnam.dqanalyzer.importing.ImportPreview;
+import ci.cnam.dqanalyzer.importing.ImportPreview.PreviewRow;
 import ci.cnam.dqanalyzer.importing.ImportProgressListener;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
@@ -52,6 +54,49 @@ class DuckDbParquetLoader {
         } catch (RuntimeException e) {
             databases.delete(database);
             throw e;
+        }
+    }
+
+    /**
+     * Premières lignes du fichier, sans rien charger (IMP-04). DuckDB ne lit que ce qu'il faut : un
+     * fichier Parquet de 2 Go s'aperçoit aussi vite qu'un fichier de 2 Ko.
+     *
+     * @throws ImportRejectedException si le fichier est illisible
+     */
+    ImportPreview preview(Path file, int limit) {
+        try (var connection = databases.openInMemory()) {
+            var columns = readColumns(connection, file);
+            var rows = new ArrayList<PreviewRow>();
+            var sql = new StringBuilder("SELECT ");
+            for (int index = 0; index < columns.original().size(); index++) {
+                sql.append(index == 0 ? "" : ", ")
+                        .append("CAST(")
+                        .append(DuckDbIdentifiers.quote(columns.original().get(index)))
+                        .append(" AS VARCHAR)");
+            }
+            sql.append(" FROM read_parquet(?) LIMIT ?");
+            try (var statement = connection.prepareStatement(sql.toString())) {
+                statement.setString(1, file.toAbsolutePath().toString());
+                statement.setInt(2, limit + 1); // une ligne de plus : elle dit s'il en reste
+                try (var result = statement.executeQuery()) {
+                    boolean truncated = false;
+                    while (result.next()) {
+                        if (rows.size() == limit) {
+                            truncated = true; // la ligne lue en trop prouve qu'il en reste
+                            break;
+                        }
+                        var values = new ArrayList<String>(columns.names().size());
+                        for (int column = 1; column <= columns.names().size(); column++) {
+                            String value = result.getString(column);
+                            values.add(value == null || value.isEmpty() ? null : value);
+                        }
+                        rows.add(new PreviewRow(rows.size() + 1L, values));
+                    }
+                    return new ImportPreview(columns.names(), rows, truncated);
+                }
+            }
+        } catch (SQLException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
         }
     }
 
