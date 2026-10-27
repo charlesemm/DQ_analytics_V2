@@ -16,6 +16,8 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -206,6 +208,61 @@ class ImportControllerIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("gabarit")));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_une_archive_contenant_un_seul_fichier(@TempDir Path directory) throws Exception {
+        Path archive = directory.resolve("extraction.zip");
+        try (var out = new ZipOutputStream(Files.newOutputStream(archive))) {
+            out.putNextEntry(new ZipEntry("assures.csv"));
+            out.write(CSV.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "extraction.zip", "application/zip", Files.readAllBytes(archive)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("DELIMITED"))
+                .andExpect(jsonPath("$.originalName").value("extraction.zip"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(3));
+        var stored =
+                jdbc.queryForMap("SELECT size_bytes, extracted_name, extracted_path FROM source_file WHERE id = ?", id);
+        // Le fichier conservé reste l'archive envoyée (IMP-06) ; c'est son contenu qui est analysé.
+        assertThat((Long) stored.get("size_bytes")).isEqualTo(Files.size(archive));
+        assertThat(stored.get("extracted_name")).isEqualTo("assures.csv");
+        assertThat(stored.get("extracted_path")).isNotNull();
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void une_archive_contenant_plusieurs_fichiers_est_refusee(@TempDir Path directory) throws Exception {
+        Path archive = directory.resolve("extraction.zip");
+        try (var out = new ZipOutputStream(Files.newOutputStream(archive))) {
+            for (String name : new String[] {"assures.csv", "contrats.csv"}) {
+                out.putNextEntry(new ZipEntry(name));
+                out.write(CSV.getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            }
+        }
+
+        mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "extraction.zip", "application/zip", Files.readAllBytes(archive)))
+                        .with(csrf()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("2 fichiers")));
     }
 
     @Test

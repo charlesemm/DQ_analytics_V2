@@ -12,9 +12,11 @@ import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
 import ci.cnam.dqanalyzer.importing.XmlSettings;
 import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
+import ci.cnam.dqanalyzer.importing.domain.SingleEntryArchive;
 import ci.cnam.dqanalyzer.importing.domain.SourceFile;
 import ci.cnam.dqanalyzer.importing.domain.TextFormatDetector;
 import ci.cnam.dqanalyzer.security.CurrentUserProvider;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -79,26 +81,77 @@ class FileImportService implements ImportService {
         var stored = storage.store(content, maxSizeBytes);
         try {
             var format = validation.checkAcceptable(stored.path(), originalName);
-            var settings = detect(format, stored.path());
-            var sourceFile = sourceFiles.save(new SourceFile(
-                    originalName,
-                    stored.sizeBytes(),
-                    stored.sha256(),
-                    format,
-                    toJson(settings),
-                    stored.path().toString(),
-                    currentUser.currentUserId()));
-            log.info(
-                    "Fichier {} reçu ({} octets), format {}, {}",
-                    sourceFile.getId(),
-                    stored.sizeBytes(),
-                    format,
-                    settings.hasHeader() ? "en-tête présent" : "sans en-tête");
-            return new ReceivedFile(sourceFile.getId(), originalName, stored.sizeBytes(), stored.sha256(), settings);
+            return format == ImportFormat.ZIP
+                    ? receiveArchive(stored, originalName)
+                    : save(stored, originalName, format, stored.path(), null, null);
         } catch (RuntimeException e) {
             storage.delete(stored.path()); // un fichier refusé ne reste pas sur le disque
             throw e;
         }
+    }
+
+    /**
+     * Archive à un seul fichier (IMP-09) : son contenu est extrait à côté, puis contrôlé comme un
+     * fichier reçu directement. L'archive reste le fichier conservé, avec sa taille et son empreinte.
+     */
+    private ReceivedFile receiveArchive(StoredFile archive, String originalName) {
+        StoredFile extracted = null;
+        String entryName;
+        try (var content = SingleEntryArchive.open(archive.path())) {
+            entryName = content.entryName();
+            extracted = storage.store(content.content(), maxSizeBytes);
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.archive-illisible");
+        } catch (RuntimeException e) {
+            if (extracted != null) {
+                storage.delete(extracted.path());
+            }
+            throw e;
+        }
+        try {
+            var format = validation.checkAcceptable(extracted.path(), entryName);
+            if (format == ImportFormat.ZIP) {
+                throw new ImportRejectedException("import.error.archive-imbriquee");
+            }
+            return save(archive, originalName, format, extracted.path(), extracted.path(), entryName);
+        } catch (RuntimeException e) {
+            storage.delete(extracted.path());
+            throw e;
+        }
+    }
+
+    /**
+     * @param stored fichier conservé, celui que l'analyste a envoyé (IMP-06)
+     * @param fileToRead fichier à lire : le même, ou celui extrait d'une archive
+     */
+    private ReceivedFile save(
+            StoredFile stored,
+            String originalName,
+            ImportFormat format,
+            Path fileToRead,
+            Path extractedPath,
+            String extractedName) {
+        var settings = detect(format, fileToRead);
+        var sourceFile = new SourceFile(
+                originalName,
+                stored.sizeBytes(),
+                stored.sha256(),
+                format,
+                toJson(settings),
+                stored.path().toString(),
+                currentUser.currentUserId());
+        if (extractedPath != null) {
+            sourceFile.contentExtractedTo(extractedPath.toString(), extractedName);
+        }
+        sourceFiles.save(sourceFile);
+        log.info(
+                "Fichier {} reçu ({} octets), format {}, {}{}",
+                sourceFile.getId(),
+                stored.sizeBytes(),
+                format,
+                settings.hasHeader() ? "en-tête présent" : "sans en-tête",
+                extractedPath == null ? "" : ", extrait d'une archive");
+        return new ReceivedFile(sourceFile.getId(), originalName, stored.sizeBytes(), stored.sha256(), settings);
     }
 
     /**
@@ -114,6 +167,8 @@ class FileImportService implements ImportService {
             case XML -> XmlSettings.undetermined();
             case JSON -> JsonSettings.root();
             case PARQUET -> new ParquetSettings();
+            // L.archive a déjà été ouverte : le format retenu est celui du fichier qu.elle contient.
+            case ZIP -> throw new IllegalStateException("Une archive ne se lit pas directement");
         };
     }
 
@@ -127,7 +182,7 @@ class FileImportService implements ImportService {
         sourceFiles.save(sourceFile);
         try {
             var imported = loader.load(
-                    Path.of(sourceFile.getStoragePath()),
+                    Path.of(sourceFile.getFileToRead()),
                     settings,
                     database,
                     tableName,

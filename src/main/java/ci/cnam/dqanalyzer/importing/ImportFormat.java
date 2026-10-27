@@ -60,7 +60,13 @@ public enum ImportFormat {
      * octets, « PAR1 », et non à son type de contenu, que Tika ne distingue pas d'un binaire
      * quelconque.
      */
-    PARQUET(List.of("parquet"), Set.of("application/vnd.apache.parquet", "application/x-parquet"));
+    PARQUET(List.of("parquet"), Set.of("application/vnd.apache.parquet", "application/x-parquet")),
+
+    /**
+     * Archive contenant un seul fichier (IMP-09). Ce n'est pas un format de données : le fichier
+     * qu'elle contient est extrait, contrôlé et lu dans son propre format.
+     */
+    ZIP(List.of("zip"), Set.of("application/zip", "application/x-zip-compressed"));
 
     /** Marque de début (et de fin) d'un fichier Parquet. */
     public static final String PARQUET_MAGIC = "PAR1";
