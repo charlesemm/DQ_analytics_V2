@@ -8,6 +8,8 @@ import ci.cnam.dqanalyzer.importing.ImportProgress;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ImportStatus;
+import ci.cnam.dqanalyzer.importing.ImportedTable;
 import ci.cnam.dqanalyzer.importing.JsonSettings;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
@@ -263,6 +265,22 @@ class FileImportService implements ImportService {
                 sourceFile.getRowCount() == null ? 0 : sourceFile.getRowCount(),
                 sourceFile.getRaggedRowCount() == null ? 0 : sourceFile.getRaggedRowCount(),
                 sourceFile.getImportError() == null ? "" : sourceFile.getImportError());
+    }
+
+    @Override
+    public ImportedTable tableOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        if (sourceFile.getImportStatus() != ImportStatus.DONE) {
+            throw new ImportRejectedException("import.error.chargement-inacheve");
+        }
+        Path database = Path.of(sourceFile.getDuckdbPath());
+        String tableName = sourceFile.getTableName();
+        return new ImportedTable(
+                database,
+                tableName,
+                loader.columnsOf(database, tableName),
+                sourceFile.getRowCount(),
+                sourceFile.getRaggedRowCount() == null ? 0 : sourceFile.getRaggedRowCount());
     }
 
     private void reportProgress(SourceFile sourceFile, int percent) {
