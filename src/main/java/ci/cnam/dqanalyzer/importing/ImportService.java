@@ -56,4 +56,16 @@ public interface ImportService {
 
     /** @throws java.util.NoSuchElementException si l'import n'existe pas */
     ImportProgress progressOf(long sourceFileId);
+
+    /**
+     * Table DuckDB d'un fichier déjà chargé, pour les modules qui l'analysent (profilage, exécution).
+     *
+     * <p>Le chargement est asynchrone (IMP-06) : tant qu'il n'est pas terminé, la table est vide ou
+     * n'existe pas encore. Un écran ouvert trois secondes après le dépôt d'un fichier de 2 Go doit
+     * afficher « chargement en cours », pas « 0 ligne » : d'où le refus plutôt qu'une table vide.
+     *
+     * @throws java.util.NoSuchElementException si l'import n'existe pas
+     * @throws ImportRejectedException si son chargement n'est pas terminé
+     */
+    ImportedTable tableOf(long sourceFileId);
 }

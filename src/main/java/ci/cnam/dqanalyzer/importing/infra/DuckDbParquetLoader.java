@@ -8,6 +8,7 @@ import ci.cnam.dqanalyzer.importing.ImportedTable;
 import ci.cnam.dqanalyzer.importing.domain.HeaderNames;
 import ci.cnam.dqanalyzer.importing.domain.RowSource;
 import ci.cnam.dqanalyzer.rules.Dataset;
+import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import ci.cnam.dqanalyzer.shared.duckdb.DuckDbIdentifiers;
 import java.nio.file.Path;
 import java.sql.Connection;

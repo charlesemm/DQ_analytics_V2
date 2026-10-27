@@ -2,6 +2,8 @@
 // Le fichier n'est jamais lu en entier : Blob.slice ne découpe que la tranche qu'on envoie.
 // Aucune dépendance : le navigateur sait tout faire, et la page ne charge pas de bibliothèque.
 
+import {adresse} from './base-url.js';
+
 const CSRF_HEADER = 'X-CSRF-TOKEN';
 const RETRIES_PER_CHUNK = 3;
 const RETRY_DELAY_MS = 2000;
@@ -53,13 +55,13 @@ function delay(milliseconds) {
 export async function uploadInChunks(file, onProgress, uploadId) {
     let upload;
     if (uploadId) {
-        const response = await fetch(`/api/uploads/${uploadId}`, {headers: headers()});
+        const response = await fetch(adresse(`/api/uploads/${uploadId}`), {headers: headers()});
         if (!response.ok) {
             throw await readError(response);
         }
         upload = await response.json();
     } else {
-        upload = await postForm('/api/uploads', {fileName: file.name, totalSize: file.size});
+        upload = await postForm(adresse('/api/uploads'), {fileName: file.name, totalSize: file.size});
     }
 
     const chunkSize = upload.chunkSize;
@@ -77,7 +79,7 @@ export async function uploadInChunks(file, onProgress, uploadId) {
         await sendChunk(upload.uploadId, number, slice);
         onProgress(Math.round(((number + 1) / chunks) * 100));
     }
-    return postForm(`/api/uploads/${upload.uploadId}/complete`, {});
+    return postForm(adresse(`/api/uploads/${upload.uploadId}/complete`), {});
 }
 
 /**
@@ -88,7 +90,7 @@ async function sendChunk(uploadId, number, slice) {
     let lastError;
     for (let attempt = 1; attempt <= RETRIES_PER_CHUNK; attempt++) {
         try {
-            const response = await fetch(`/api/uploads/${uploadId}/chunks/${number}`, {
+            const response = await fetch(adresse(`/api/uploads/${uploadId}/chunks/${number}`), {
                 method: 'PUT',
                 headers: headers({'Content-Type': 'application/octet-stream'}),
                 body: slice

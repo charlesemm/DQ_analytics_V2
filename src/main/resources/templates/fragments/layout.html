@@ -4,6 +4,9 @@
 <head th:fragment="head(title)">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Préfixe de l'application, lu par les modules JavaScript (voir static/js/base-url.js).
+       Vaut « /dq/ » derrière le nginx d'ÉCHO, « / » sans sous-chemin. -->
+  <meta name="base-url" th:content="@{/}">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
   <title th:text="${title} + ' · ' + #{app.name}">DQ-Analyzer</title>
   <link rel="stylesheet" th:href="@{/webjars/bootstrap/css/bootstrap.min.css}">

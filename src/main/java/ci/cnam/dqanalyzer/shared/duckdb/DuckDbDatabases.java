@@ -1,4 +1,4 @@
-package ci.cnam.dqanalyzer.importing.infra;
+package ci.cnam.dqanalyzer.shared.duckdb;
 
 import java.io.IOException;
 import java.nio.file.Files;

@@ -9,6 +9,7 @@ import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -279,6 +280,27 @@ class DuckDbTableLoaderTest {
         Path file = directory.resolve("donnees" + Math.abs(content.hashCode()) + ".csv");
         Files.writeString(file, content, StandardCharsets.UTF_8);
         return file;
+    }
+
+    @Test
+    void relit_les_colonnes_d_une_table_deja_chargee_sans_la_colonne_technique(@TempDir Path directory)
+            throws Exception {
+        Path csv = csv(
+                directory, """
+                id;nom;ville
+                1;Koné Aminata;Abidjan
+                """);
+        var imported = loader.load(csv, SEMICOLON_UTF8, directory.resolve("analyse.duckdb"), "ds_1");
+
+        assertThat(loader.columnsOf(imported.database(), imported.tableName())).containsExactly("id", "nom", "ville");
+    }
+
+    @Test
+    void refuse_de_relire_les_colonnes_d_une_table_absente(@TempDir Path directory) {
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(() -> loader.columnsOf(directory.resolve("absente.duckdb"), "ds_1"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.table-introuvable");
     }
 
     /** Relit la table dans une connexion neuve : ce qui a été chargé est bien sur le disque. */

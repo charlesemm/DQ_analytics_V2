@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{profiling.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{profiling.title}">Profil du fichier</h1>
+  <p class="text-muted" th:text="#{profiling.intro(${rowCount})}"></p>
+
+  <!-- PRF-01, PRF-02 : une ligne par colonne ; le détail se déplie au clic (HTMX). -->
+  <section class="card card-body shadow-sm mb-4">
+    <h2 class="h6" th:text="#{profiling.colonnes}">Colonnes</h2>
+    <p class="text-muted small" th:text="#{profiling.colonnes.aide}"></p>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead>
+        <tr>
+          <th scope="col" th:text="#{profiling.colonne}">Colonne</th>
+          <th scope="col" th:text="#{profiling.type}">Type détecté</th>
+          <th scope="col" th:text="#{profiling.remplissage}">Remplissage</th>
+          <th scope="col" class="text-end" th:text="#{profiling.distinctes}">Valeurs distinctes</th>
+          <th scope="col" class="text-end" th:text="#{profiling.longueur-min}">Longueur min.</th>
+          <th scope="col" class="text-end" th:text="#{profiling.longueur-max}">Longueur max.</th>
+        </tr>
+        </thead>
+        <tbody th:each="profile, iter : ${profiles}">
+        <tr role="button"
+            th:attr="aria-label=#{profiling.deplier(${profile.column()})}"
+            th:hx-get="@{/fichiers/{id}/profil/colonne(id=${sourceFileId},column=${profile.column()})}"
+            th:hx-target="'#detail-' + ${iter.index}"
+            hx-swap="innerHTML"
+            hx-trigger="click once">
+          <th scope="row" class="fw-normal" th:text="${profile.column()}"></th>
+          <td><span class="badge text-bg-secondary" th:text="#{'profiling.type.' + ${profile.detectedType()}}"></span></td>
+          <td style="min-width: 10rem">
+            <div class="progress" role="progressbar"
+                 th:attr="aria-valuenow=${#numbers.formatDecimal(profile.fillRate(), 1, 0)}"
+                 aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar"
+                   th:style="'width: ' + ${#numbers.formatDecimal(profile.fillRate(), 1, 0, 'POINT')} + '%'"
+                   th:text="${#numbers.formatDecimal(profile.fillRate(), 1, 0)} + ' %'"></div>
+            </div>
+            <span class="text-muted small"
+                  th:if="${profile.empty() > 0}"
+                  th:text="#{profiling.vides(${profile.empty()})}"></span>
+          </td>
+          <td class="text-end" th:text="${profile.distinctValues()}"></td>
+          <td class="text-end" th:text="${profile.minLength()} ?: '—'"></td>
+          <td class="text-end" th:text="${profile.maxLength()} ?: '—'"></td>
+        </tr>
+        <tr>
+          <td colspan="6" class="p-0 border-0">
+            <div th:id="'detail-' + ${iter.index}"></div>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PRF-04 : des suggestions, jamais des règles créées à l'insu de l'analyste. -->
+  <section class="card card-body shadow-sm mb-4">
+    <h2 class="h6" th:text="#{profiling.suggestions}">Règles suggérées</h2>
+    <p class="text-muted small" th:text="#{profiling.suggestions.aide}"></p>
+    <p class="text-muted" th:if="${#lists.isEmpty(suggestions)}" th:text="#{profiling.suggestions.aucune}"></p>
+    <form th:unless="${#lists.isEmpty(suggestions)}">
+      <div class="form-check" th:each="suggestion, iter : ${suggestions}">
+        <input class="form-check-input" type="checkbox" name="suggestion"
+               th:id="'suggestion-' + ${iter.index}"
+               th:value="${suggestion.column()} + '|' + ${suggestion.ruleType()}">
+        <label class="form-check-label" th:for="'suggestion-' + ${iter.index}">
+          <span class="badge text-bg-light me-1" th:text="${suggestion.ruleType()}"></span>
+          <span class="fw-semibold" th:text="${suggestion.column()}"></span>
+          <span class="text-muted" th:text="' — ' + ${suggestion.reason()}"></span>
+        </label>
+      </div>
+      <!-- Le formulaire de règle n'existe pas encore (étape suivante) : le bouton dit pourquoi. -->
+      <button type="button" class="btn btn-primary mt-3" disabled
+              th:text="#{profiling.creer}">Créer les règles cochées</button>
+      <p class="text-muted small mt-2 mb-0" th:text="#{profiling.creer.indisponible}"></p>
+    </form>
+  </section>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

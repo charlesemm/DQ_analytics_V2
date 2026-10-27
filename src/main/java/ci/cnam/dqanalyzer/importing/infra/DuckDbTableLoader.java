@@ -8,11 +8,13 @@ import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.domain.RowSource;
 import ci.cnam.dqanalyzer.importing.domain.RowSources;
 import ci.cnam.dqanalyzer.rules.Dataset;
+import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import ci.cnam.dqanalyzer.shared.duckdb.DuckDbIdentifiers;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -161,6 +163,32 @@ public class DuckDbTableLoader {
         try (var statement = connection.createStatement()) {
             statement.execute(ddl.append(')').toString());
         }
+    }
+
+    /**
+     * Colonnes du fichier dans une table déjà chargée, dans leur ordre d'origine, sans la colonne
+     * technique {@value Dataset#ROW_NUM_COLUMN}. Les noms sont relus de la table et non reconstruits à
+     * partir du fichier : ce sont eux que les règles devront citer.
+     *
+     * @throws ImportRejectedException si la base ou la table n'est plus sur le disque
+     */
+    public List<String> columnsOf(Path database, String tableName) {
+        var columns = new ArrayList<String>();
+        try (var connection = databases.open(database);
+                var rs = connection.getMetaData().getColumns(null, MAIN_SCHEMA, tableName, null)) {
+            while (rs.next()) {
+                String column = rs.getString("COLUMN_NAME");
+                if (!Dataset.ROW_NUM_COLUMN.equals(column)) {
+                    columns.add(column);
+                }
+            }
+        } catch (SQLException e) {
+            throw new ImportRejectedException("import.error.table-introuvable");
+        }
+        if (columns.isEmpty()) {
+            throw new ImportRejectedException("import.error.table-introuvable");
+        }
+        return columns;
     }
 
     private record LoadedRows(long rows, long raggedRows) {}

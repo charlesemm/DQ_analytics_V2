@@ -3,6 +3,7 @@
 // data- du gabarit (ERG-02). Aucune bibliothèque : le navigateur suffit.
 
 import {uploadInChunks} from './upload.js';
+import {adresse} from './base-url.js';
 
 const POLL_DELAY_MS = 700;
 
@@ -146,7 +147,7 @@ function corrections() {
 async function rafraichirApercu() {
     effacerErreur();
     try {
-        const url = `/api/imports/${sourceFileId}/preview?${corrections()}`;
+        const url = adresse(`/api/imports/${sourceFileId}/preview?${corrections()}`);
         const apercu = await lire(await fetch(url, {headers: {'X-CSRF-TOKEN': csrfToken()}}));
         format = apercu.format;
         ajusterChamps();
@@ -221,7 +222,7 @@ async function charger() {
     document.getElementById('chargement-etat').textContent = textes.enCours;
     avancer(barre, 0);
     try {
-        await lire(await fetch(`/api/imports/${sourceFileId}/load`, {
+        await lire(await fetch(adresse(`/api/imports/${sourceFileId}/load`), {
             method: 'POST',
             headers: {'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded'},
             body: corrections()
@@ -232,9 +233,16 @@ async function charger() {
     }
 }
 
+/** Le fichier est chargé : l'analyste enchaîne sur son profil (PRF-01 à PRF-04). */
+function montrerProfil() {
+    const lien = document.getElementById('voir-profil');
+    lien.setAttribute('href', adresse(`/fichiers/${sourceFileId}/profil`));
+    montrer(lien, true);
+}
+
 async function suivre(barre) {
     for (;;) {
-        const etat = await lire(await fetch(`/api/imports/${sourceFileId}`));
+        const etat = await lire(await fetch(adresse(`/api/imports/${sourceFileId}`)));
         avancer(barre, etat.percent);
         if (etat.status === 'DONE') {
             barre.classList.add('bg-success');
@@ -243,6 +251,7 @@ async function suivre(barre) {
             resume.textContent = `${etat.rowCount} ${textes.lignes}`
                 + (etat.raggedRowCount > 0 ? ` — ${etat.raggedRowCount} ${textes.incompletes}` : '');
             montrer(resume, true);
+            montrerProfil();
             return;
         }
         if (etat.status === 'FAILED') {
