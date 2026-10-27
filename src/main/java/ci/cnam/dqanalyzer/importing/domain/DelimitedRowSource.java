@@ -1,7 +1,7 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
+import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
-import ci.cnam.dqanalyzer.importing.ImportSettings;
 import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.FilterInputStream;
@@ -65,7 +65,7 @@ public final class DelimitedRowSource implements RowSource {
      *
      * @throws ImportRejectedException si le fichier est illisible ou ne contient aucune ligne
      */
-    public static DelimitedRowSource open(Path file, ImportSettings settings) {
+    public static DelimitedRowSource open(Path file, DelimitedSettings settings) {
         CountingInputStream input = null;
         BufferedReader reader = null;
         CSVParser parser = null;
@@ -180,7 +180,7 @@ public final class DelimitedRowSource implements RowSource {
         return new ImportRejectedException("import.error.ligne-illisible", parser.getCurrentLineNumber());
     }
 
-    private static CSVFormat format(ImportSettings settings) {
+    private static CSVFormat format(DelimitedSettings settings) {
         return CSVFormat.DEFAULT
                 .builder()
                 .setDelimiter(settings.delimiter())

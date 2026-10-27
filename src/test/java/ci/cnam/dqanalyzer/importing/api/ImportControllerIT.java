@@ -8,9 +8,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import ci.cnam.dqanalyzer.TestcontainersConfiguration;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -95,6 +101,45 @@ class ImportControllerIT {
 
     @Test
     @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_classeur_excel_et_choisit_sa_feuille(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet("Notice", List.of(List.of("mode d'emploi"))),
+                Workbooks.sheet(
+                        "Assurés",
+                        List.of(
+                                List.of("id", "nom", "naissance"),
+                                List.of("1", "Koné Aminata", LocalDate.of(1994, 12, 31)))));
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "assures.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                Files.readAllBytes(classeur)))
+                        .param("sheet", "Assurés")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("XLSX"))
+                .andExpect(jsonPath("$.sheetName").value("Assurés"))
+                .andExpect(jsonPath("$.headerRow").value(1))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(1));
+        var stored = jdbc.queryForMap("SELECT format, column_count FROM source_file WHERE id = ?", id);
+        assertThat(stored.get("format")).isEqualTo("XLSX");
+        assertThat(stored.get("column_count")).isEqualTo(3);
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
     void le_separateur_choisi_par_l_analyste_prime_sur_la_detection() throws Exception {
         mvc.perform(multipart("/api/imports")
                         .file(file("mixte.csv", "a,b;c\n1,2;3\n"))
@@ -126,7 +171,8 @@ class ImportControllerIT {
                         .file(new MockMultipartFile("file", "assures.csv", "text/csv", executable))
                         .with(csrf()))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("pas du texte")));
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.containsString("ne correspond pas à son extension")));
     }
 
     @Test

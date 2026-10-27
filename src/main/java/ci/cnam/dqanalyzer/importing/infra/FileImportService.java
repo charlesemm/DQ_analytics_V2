@@ -6,6 +6,7 @@ import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportService;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
+import ci.cnam.dqanalyzer.importing.SheetSettings;
 import ci.cnam.dqanalyzer.importing.domain.CsvFormatDetector;
 import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
 import ci.cnam.dqanalyzer.importing.domain.SourceFile;
@@ -22,16 +23,17 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Import d'un fichier texte délimité : réception (IMP-05, IMP-06, IMP-07) puis chargement en tâche de
- * fond vers DuckDB (PERF-03).
+ * Import d'un fichier : réception (IMP-05, IMP-06, IMP-07) puis chargement en tâche de fond vers
+ * DuckDB (PERF-03). Le format reconnu décide des paramètres proposés à l'analyste, jamais de la
+ * suite : le chargement est le même pour tous (CDC §5.1 bis).
  *
  * <p>Aucune valeur de cellule n'est journalisée, jamais : les fichiers contiennent des données
  * personnelles d'assurés. Les traces se limitent à des identifiants techniques et des compteurs.
  */
 @Service
-class CsvImportService implements ImportService {
+class FileImportService implements ImportService {
 
-    private static final Logger log = LoggerFactory.getLogger(CsvImportService.class);
+    private static final Logger log = LoggerFactory.getLogger(FileImportService.class);
 
     /** Les noms de table sont fabriqués ici, jamais déduits du nom du fichier. */
     private static final String TABLE_PREFIX = "ds_";
@@ -46,7 +48,7 @@ class CsvImportService implements ImportService {
     private final MessageSource messages;
     private final long maxSizeBytes;
 
-    CsvImportService(
+    FileImportService(
             SourceFileRepository sourceFiles,
             FileStorage storage,
             ImportValidation validation,
@@ -72,27 +74,38 @@ class CsvImportService implements ImportService {
         validation.checkName(originalName); // avant d'écrire : inutile de recopier un fichier refusé
         var stored = storage.store(content, maxSizeBytes);
         try {
-            validation.checkAcceptable(stored.path(), originalName);
-            var settings = detector.detect(stored.path());
+            var format = validation.checkAcceptable(stored.path(), originalName);
+            var settings = detect(format, stored.path());
             var sourceFile = sourceFiles.save(new SourceFile(
                     originalName,
                     stored.sizeBytes(),
                     stored.sha256(),
-                    ImportFormat.DELIMITED,
+                    format,
                     toJson(settings),
                     stored.path().toString(),
                     currentUser.currentUserId()));
             log.info(
-                    "Fichier {} reçu ({} octets), détection : encodage {}, {}",
+                    "Fichier {} reçu ({} octets), format {}, {}",
                     sourceFile.getId(),
                     stored.sizeBytes(),
-                    settings.charsetName(),
+                    format,
                     settings.hasHeader() ? "en-tête présent" : "sans en-tête");
             return new ReceivedFile(sourceFile.getId(), originalName, stored.sizeBytes(), stored.sha256(), settings);
         } catch (RuntimeException e) {
             storage.delete(stored.path()); // un fichier refusé ne reste pas sur le disque
             throw e;
         }
+    }
+
+    /**
+     * Paramètres proposés à l'analyste (IMP-07). Un fichier texte se devine (encodage, séparateur) ;
+     * un tableur part des choix les plus courants, que l'analyste corrigera à l'écran (IMP-02).
+     */
+    private ImportSettings detect(ImportFormat format, Path file) {
+        return switch (format) {
+            case DELIMITED -> detector.detect(file);
+            case XLSX -> SheetSettings.defaults(format);
+        };
     }
 
     @Async

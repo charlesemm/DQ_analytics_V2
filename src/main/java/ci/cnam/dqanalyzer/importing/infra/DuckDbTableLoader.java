@@ -4,8 +4,8 @@ import ci.cnam.dqanalyzer.importing.ImportProgressListener;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
-import ci.cnam.dqanalyzer.importing.domain.DelimitedRowSource;
 import ci.cnam.dqanalyzer.importing.domain.RowSource;
+import ci.cnam.dqanalyzer.importing.domain.RowSources;
 import ci.cnam.dqanalyzer.rules.Dataset;
 import ci.cnam.dqanalyzer.shared.duckdb.DuckDbIdentifiers;
 import java.io.IOException;
@@ -73,7 +73,7 @@ public class DuckDbTableLoader {
             Path database,
             String tableName,
             ImportProgressListener progressListener) {
-        try (var source = DelimitedRowSource.open(file, settings)) {
+        try (var source = RowSources.open(file, settings)) {
             return load(source, database, tableName, progressListener);
         } catch (IOException e) {
             throw new ImportRejectedException("import.error.fichier-illisible");

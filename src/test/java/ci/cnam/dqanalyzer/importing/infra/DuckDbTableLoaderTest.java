@@ -3,15 +3,19 @@ package ci.cnam.dqanalyzer.importing.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import ci.cnam.dqanalyzer.importing.DelimitedSettings;
+import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
-import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
+import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -19,13 +23,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Lecture en flux d'un CSV vers une table DuckDB par l'appender (PERF-03). Le n° de ligne d'origine
+ * Chargement en flux d'un fichier vers une table DuckDB par l'appender (PERF-03), quel que soit son
+ * format : le lecteur change, la table produite est la même. Le n° de ligne d'origine
  * est conservé dans {@code _row_num} : en-tête = ligne 1, première donnée = ligne 2, comme dans les
  * jeux de test des évaluateurs.
  */
 class DuckDbTableLoaderTest {
 
-    private static final ImportSettings SEMICOLON_UTF8 = new ImportSettings("UTF-8", ';', '"', true);
+    private static final DelimitedSettings SEMICOLON_UTF8 = new DelimitedSettings("UTF-8", ';', '"', true);
 
     private final DuckDbDatabases databases = new DuckDbDatabases();
     private final DuckDbTableLoader loader = new DuckDbTableLoader(databases);
@@ -56,7 +61,7 @@ class DuckDbTableLoaderTest {
     @Test
     void la_table_reste_lisible_apres_fermeture_de_la_connexion(@TempDir Path directory) throws Exception {
         Path database = directory.resolve("analyse.duckdb");
-        var settings = new ImportSettings("UTF-8", ',', '"', true);
+        var settings = new DelimitedSettings("UTF-8", ',', '"', true);
 
         var imported = loader.load(fixture("utf8_virgule.csv"), settings, database, "ds_2");
 
@@ -66,7 +71,7 @@ class DuckDbTableLoaderTest {
 
     @Test
     void lit_un_fichier_windows_1252(@TempDir Path directory) throws Exception {
-        var settings = new ImportSettings("windows-1252", ';', '"', true);
+        var settings = new DelimitedSettings("windows-1252", ';', '"', true);
 
         var imported =
                 loader.load(fixture("win1252_pointvirgule.csv"), settings, directory.resolve("w.duckdb"), "ds_3");
@@ -162,6 +167,21 @@ class DuckDbTableLoaderTest {
 
         assertThat(imported.rowCount()).isEqualTo(3);
         assertThat(rows(imported, "_row_num")).hasSize(3);
+    }
+
+    @Test
+    void charge_un_classeur_excel_comme_un_fichier_texte(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet(
+                        "Assurés", List.of(List.of("id", "naissance"), List.of("1", LocalDate.of(1994, 12, 31)))));
+
+        var imported = loader.load(
+                classeur, SheetSettings.defaults(ImportFormat.XLSX), directory.resolve("classeur.duckdb"), "ds_12");
+
+        assertThat(imported.columns()).containsExactly("id", "naissance");
+        assertThat(imported.rowCount()).isEqualTo(1);
+        assertThat(rows(imported, "_row_num, id, naissance")).containsExactly(List.of("2", "1", "31/12/1994"));
     }
 
     @Test

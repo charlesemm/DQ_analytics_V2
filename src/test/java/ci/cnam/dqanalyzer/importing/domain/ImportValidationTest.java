@@ -1,13 +1,21 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
+import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** IMP-05 : refuser un fichier vide, corrompu ou trop grand. Le type réel est vérifié, pas l'extension seule. */
 class ImportValidationTest {
@@ -34,6 +42,25 @@ class ImportValidationTest {
     void accepte_un_fichier_windows_1252() {
         assertThatCode(() -> validation.checkAcceptable(fixture("win1252_pointvirgule.csv"), "assures.csv"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void accepte_un_classeur_excel(@TempDir Path directory) {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"), Workbooks.sheet("Feuil1", List.of(List.of("id"), List.of("1"))));
+
+        assertThat(validation.checkAcceptable(classeur, "assures.xlsx")).isEqualTo(ImportFormat.XLSX);
+    }
+
+    @Test
+    void refuse_un_fichier_texte_renomme_en_xlsx(@TempDir Path directory) throws IOException {
+        Path faux = directory.resolve("assures.xlsx");
+        Files.writeString(faux, "id;nom\n1;Koné\n", StandardCharsets.UTF_8);
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(() -> validation.checkAcceptable(faux, "assures.xlsx"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.type-inattendu");
     }
 
     @Test

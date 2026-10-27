@@ -1,13 +1,11 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
+import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 import org.apache.tika.detect.DefaultDetector;
 import org.apache.tika.detect.Detector;
 import org.apache.tika.io.TikaInputStream;
@@ -17,14 +15,11 @@ import org.apache.tika.metadata.TikaCoreProperties;
 /**
  * Contrôles d'admissibilité d'un fichier (IMP-05) : extension, taille, et surtout type réel du
  * contenu. L'extension ne prouve rien : un exécutable renommé « assures.csv » est refusé ici (SEC-03).
+ *
+ * <p>Les formats acceptés sont ceux de {@link ImportFormat}, c'est-à-dire ceux dont le lecteur
+ * existe : l'outil n'accepte jamais un fichier qu'il ne saurait pas charger ensuite.
  */
 public final class ImportValidation {
-
-    /** Formats de ce premier incrément : texte délimité uniquement (CDC §5.1 bis). */
-    public static final List<String> ACCEPTED_EXTENSIONS = List.of("csv", "tsv", "txt");
-
-    private static final Set<String> ACCEPTED_MEDIA_TYPES =
-            Set.of("text/csv", "text/plain", "text/tab-separated-values", "application/csv");
 
     private static final long BYTES_PER_MEGABYTE = 1024L * 1024L;
 
@@ -46,29 +41,31 @@ public final class ImportValidation {
     /**
      * @param file fichier déjà déposé sur le disque
      * @param originalName nom donné par l'utilisateur, utilisé pour l'extension et les messages
+     * @return le format reconnu, celui dans lequel le fichier sera lu (IMP-07)
      * @throws ImportRejectedException si le fichier ne peut pas être importé
      */
-    public void checkAcceptable(Path file, String originalName) {
+    public ImportFormat checkAcceptable(Path file, String originalName) {
         String fileName = fileName(originalName);
-        checkExtension(fileName);
+        var format = checkExtension(fileName);
         checkSize(file);
-        checkRealType(file, fileName);
+        checkRealType(file, fileName, format);
+        return format;
     }
 
     /**
      * Contrôle que le nom seul permet d'espérer un format lisible. À appeler avant d'écrire quoi que
      * ce soit sur le disque : inutile de recopier 2 Go pour refuser un .pdf à la fin.
+     *
+     * @return le format attendu d'après l'extension, à confirmer par {@link #checkAcceptable}
      */
-    public void checkName(String originalName) {
-        checkExtension(fileName(originalName));
+    public ImportFormat checkName(String originalName) {
+        return checkExtension(fileName(originalName));
     }
 
-    private void checkExtension(String fileName) {
-        int dot = fileName.lastIndexOf('.');
-        String extension = dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
-        if (!ACCEPTED_EXTENSIONS.contains(extension)) {
-            throw new ImportRejectedException("import.error.extension-refusee", fileName);
-        }
+    private ImportFormat checkExtension(String fileName) {
+        return ImportFormat.ofFileName(fileName)
+                .orElseThrow(() -> new ImportRejectedException(
+                        "import.error.extension-refusee", fileName, ImportFormat.acceptedExtensions()));
     }
 
     private void checkSize(Path file) {
@@ -88,13 +85,16 @@ public final class ImportValidation {
     }
 
     /** Type réel déduit du contenu (Tika), le nom du fichier ne servant que d'indice. */
-    private void checkRealType(Path file, String fileName) {
+    private void checkRealType(Path file, String fileName, ImportFormat format) {
         var metadata = new Metadata();
         metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, fileName);
         try (var stream = TikaInputStream.get(file)) {
             var mediaType = detector.detect(stream, metadata);
             String baseType = mediaType.getBaseType().toString();
-            if (!ACCEPTED_MEDIA_TYPES.contains(baseType) && !"text".equals(mediaType.getType())) {
+            // Un fichier texte délimité peut être reconnu sous n'importe quel type « text/… » selon
+            // son contenu (text/x-matlab pour des nombres, par exemple) : la famille suffit.
+            boolean textual = format == ImportFormat.DELIMITED && "text".equals(mediaType.getType());
+            if (!textual && !format.accepts(baseType)) {
                 throw new ImportRejectedException("import.error.type-inattendu");
             }
         } catch (IOException e) {
