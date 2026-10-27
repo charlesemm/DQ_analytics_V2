@@ -3,3 +3,23 @@
   max-width: 420px;
   padding-top: 10vh;
 }
+
+/* Zone de glisser-déposer de l'écran d'import (IMP-01). */
+.border-dashed {
+  border-style: dashed !important;
+}
+
+.zone-depot {
+  background-color: var(--bs-light);
+  transition: background-color .15s ease-in-out;
+}
+
+.zone-depot-active {
+  background-color: var(--bs-primary-bg-subtle);
+}
+
+/* L'aperçu des 50 premières lignes reste dans un cadre : la page ne s'allonge pas (IMP-04). */
+.apercu {
+  max-height: 60vh;
+  overflow: auto;
+}
