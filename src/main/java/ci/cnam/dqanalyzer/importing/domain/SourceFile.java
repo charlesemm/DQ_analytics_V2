@@ -56,6 +56,12 @@ public class SourceFile {
     @Column(name = "storage_path", length = 1000)
     private String storagePath;
 
+    @Column(name = "extracted_path", length = 1000)
+    private String extractedPath;
+
+    @Column(name = "extracted_name", length = 500)
+    private String extractedName;
+
     @Column(name = "uploaded_by", nullable = false)
     private Long uploadedBy;
 
@@ -103,6 +109,20 @@ public class SourceFile {
         this.importSettings = importSettings;
         this.storagePath = storagePath;
         this.uploadedBy = uploadedBy;
+    }
+
+    /**
+     * Le fichier reçu était une archive (IMP-09) : elle reste le fichier conservé, mais c'est son
+     * contenu, extrait à côté, qui sera lu.
+     */
+    public void contentExtractedTo(String path, String name) {
+        this.extractedPath = path;
+        this.extractedName = name;
+    }
+
+    /** Fichier à lire : celui qui a été extrait de l'archive, ou le fichier reçu lui-même. */
+    public String getFileToRead() {
+        return extractedPath == null ? storagePath : extractedPath;
     }
 
     /** Le chargement démarre : les paramètres retenus peuvent différer de ceux détectés (IMP-03). */
@@ -168,6 +188,14 @@ public class SourceFile {
 
     public String getStoragePath() {
         return storagePath;
+    }
+
+    public String getExtractedPath() {
+        return extractedPath;
+    }
+
+    public String getExtractedName() {
+        return extractedName;
     }
 
     public Long getUploadedBy() {

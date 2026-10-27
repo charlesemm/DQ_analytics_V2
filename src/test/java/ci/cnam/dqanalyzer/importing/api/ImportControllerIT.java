@@ -4,13 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import ci.cnam.dqanalyzer.TestcontainersConfiguration;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -61,8 +72,8 @@ class ImportControllerIT {
         var response = mvc.perform(
                         multipart("/api/imports").file(file("assures.csv", CSV)).with(csrf()))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.delimiter").value("SEMICOLON"))
-                .andExpect(jsonPath("$.charsetName").value("UTF-8"))
+                .andExpect(jsonPath("$.settings.delimiter").value(";"))
+                .andExpect(jsonPath("$.settings.charsetName").value("UTF-8"))
                 .andExpect(jsonPath("$.hasHeader").value(true))
                 .andExpect(jsonPath("$.originalName").value("assures.csv"))
                 .andReturn();
@@ -95,13 +106,286 @@ class ImportControllerIT {
 
     @Test
     @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_classeur_excel_et_choisit_sa_feuille(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet("Notice", List.of(List.of("mode d'emploi"))),
+                Workbooks.sheet(
+                        "Assurés",
+                        List.of(
+                                List.of("id", "nom", "naissance"),
+                                List.of("1", "Koné Aminata", LocalDate.of(1994, 12, 31)))));
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "assures.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                Files.readAllBytes(classeur)))
+                        .param("sheet", "Assurés")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("XLSX"))
+                .andExpect(jsonPath("$.settings.sheetName").value("Assurés"))
+                .andExpect(jsonPath("$.settings.headerRow").value(1))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(1));
+        var stored = jdbc.queryForMap("SELECT format, column_count FROM source_file WHERE id = ?", id);
+        assertThat(stored.get("format")).isEqualTo("XLSX");
+        assertThat(stored.get("column_count")).isEqualTo(3);
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_fichier_parquet(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(directory);
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "assures.parquet", "application/octet-stream", Files.readAllBytes(parquet)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("PARQUET"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_fichier_a_largeur_fixe_avec_son_gabarit() throws Exception {
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "extraction.dat",
+                                "text/plain",
+                                "id nom       ville\n1  Koné      Abidjan\n".getBytes(StandardCharsets.UTF_8)))
+                        .param("template", "id:1:3,nom:4:10,ville:14:8")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("FIXED_WIDTH"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_fichier_a_largeur_fixe_sans_gabarit_est_refuse_avec_un_message_clair() throws Exception {
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "extraction.dat", "text/plain", "1  Koné\n".getBytes(StandardCharsets.UTF_8)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("gabarit")));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_une_archive_contenant_un_seul_fichier(@TempDir Path directory) throws Exception {
+        Path archive = directory.resolve("extraction.zip");
+        try (var out = new ZipOutputStream(Files.newOutputStream(archive))) {
+            out.putNextEntry(new ZipEntry("assures.csv"));
+            out.write(CSV.getBytes(StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "extraction.zip", "application/zip", Files.readAllBytes(archive)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("DELIMITED"))
+                .andExpect(jsonPath("$.originalName").value("extraction.zip"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(3));
+        var stored =
+                jdbc.queryForMap("SELECT size_bytes, extracted_name, extracted_path FROM source_file WHERE id = ?", id);
+        // Le fichier conservé reste l'archive envoyée (IMP-06) ; c'est son contenu qui est analysé.
+        assertThat((Long) stored.get("size_bytes")).isEqualTo(Files.size(archive));
+        assertThat(stored.get("extracted_name")).isEqualTo("assures.csv");
+        assertThat(stored.get("extracted_path")).isNotNull();
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void une_archive_contenant_plusieurs_fichiers_est_refusee(@TempDir Path directory) throws Exception {
+        Path archive = directory.resolve("extraction.zip");
+        try (var out = new ZipOutputStream(Files.newOutputStream(archive))) {
+            for (String name : new String[] {"assures.csv", "contrats.csv"}) {
+                out.putNextEntry(new ZipEntry(name));
+                out.write(CSV.getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            }
+        }
+
+        mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file", "extraction.zip", "application/zip", Files.readAllBytes(archive)))
+                        .with(csrf()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("2 fichiers")));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void un_analyste_importe_un_fichier_json() throws Exception {
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "assures.json",
+                                "application/json",
+                                "[{\"id\":\"1\",\"adresse\":{\"ville\":\"Abidjan\"}}]"
+                                        .getBytes(StandardCharsets.UTF_8)))
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.format").value("JSON"))
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(1));
+        assertThat(jdbc.queryForObject("SELECT column_count FROM source_file WHERE id = ?", Integer.class, id))
+                .isEqualTo(2);
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
     void le_separateur_choisi_par_l_analyste_prime_sur_la_detection() throws Exception {
         mvc.perform(multipart("/api/imports")
                         .file(file("mixte.csv", "a,b;c\n1,2;3\n"))
                         .param("delimiter", "COMMA")
                         .with(csrf()))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.delimiter").value("COMMA"));
+                .andExpect(jsonPath("$.settings.delimiter").value(","));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_analyste_regarde_l_apercu_puis_lance_le_chargement() throws Exception {
+        long id = receive("assures.csv", CSV);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(jsonPath("$.status").value("PENDING")); // rien n'est chargé tant qu'il regarde
+        mvc.perform(get("/api/imports/{id}/preview", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("id", "nom", "ville")))
+                .andExpect(jsonPath("$.rows.length()").value(3))
+                .andExpect(jsonPath("$.rows[0].number").value(2))
+                .andExpect(jsonPath("$.rows[0].values[1]").value("Koné Aminata"))
+                .andExpect(jsonPath("$.truncated").value(false));
+
+        mvc.perform(post("/api/imports/{id}/load", id).with(csrf())).andExpect(status().isAccepted());
+        awaitFinished(id);
+
+        mvc.perform(get("/api/imports/{id}", id))
+                .andExpect(jsonPath("$.status").value("DONE"))
+                .andExpect(jsonPath("$.rowCount").value(3));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_s_arrete_a_cinquante_lignes() throws Exception {
+        var contenu = new StringBuilder("id;nom\n");
+        for (int ligne = 1; ligne <= 60; ligne++) {
+            contenu.append(ligne).append(";nom").append(ligne).append('\n');
+        }
+        long id = receive("assures.csv", contenu.toString());
+
+        mvc.perform(get("/api/imports/{id}/preview", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rows.length()").value(50))
+                .andExpect(jsonPath("$.truncated").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_suit_le_separateur_que_l_analyste_corrige() throws Exception {
+        long id = receive("mixte.csv", "a,b;c\n1,2;3\n");
+
+        mvc.perform(get("/api/imports/{id}/preview", id).param("delimiter", "COMMA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("a", "b;c")))
+                .andExpect(jsonPath("$.settings.delimiter").value(","));
+    }
+
+    @Test
+    @WithMockUser(username = "analyste-it", roles = "ANALYST")
+    void l_apercu_d_un_classeur_donne_la_liste_des_feuilles(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet("Notice", List.of(List.of("mode d'emploi"))),
+                Workbooks.sheet("Assurés", List.of(List.of("id", "nom"), List.of("1", "Koné"))));
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(new MockMultipartFile(
+                                "file",
+                                "assures.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                Files.readAllBytes(classeur)))
+                        .param("load", "false")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        long id = json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
+
+        mvc.perform(get("/api/imports/{id}/preview", id).param("sheet", "Assurés"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sheetNames").value(org.hamcrest.Matchers.contains("Notice", "Assurés")))
+                .andExpect(jsonPath("$.columns").value(org.hamcrest.Matchers.contains("id", "nom")))
+                .andExpect(jsonPath("$.rows[0].number").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "lecteur-it", roles = "READER")
+    void un_lecteur_ne_peut_voir_ni_l_apercu_ni_lancer_un_chargement() throws Exception {
+        mvc.perform(get("/api/imports/{id}/preview", 1)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/imports/{id}/load", 1).with(csrf())).andExpect(status().isForbidden());
     }
 
     @Test
@@ -126,7 +410,8 @@ class ImportControllerIT {
                         .file(new MockMultipartFile("file", "assures.csv", "text/csv", executable))
                         .with(csrf()))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("pas du texte")));
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.containsString("ne correspond pas à son extension")));
     }
 
     @Test
@@ -142,7 +427,9 @@ class ImportControllerIT {
     void un_format_non_pris_en_charge_est_refuse() throws Exception {
         mvc.perform(multipart("/api/imports").file(file("assures.pdf", CSV)).with(csrf()))
                 .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("csv, tsv, txt")));
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.containsString(
+                                "csv, dat, json, jsonl, ndjson, ods, parquet, tsv, txt, xls, xlsm, xlsx, xml")));
     }
 
     @Test
@@ -167,6 +454,31 @@ class ImportControllerIT {
             Thread.sleep(50);
         }
         throw new AssertionError("L'import " + id + " ne s'est pas terminé dans le délai imparti");
+    }
+
+    /** Un fichier Parquet d'essai, écrit par DuckDB lui-même. */
+    private static Path parquet(Path directory) throws SQLException {
+        Path file = directory.resolve("assures.parquet");
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:");
+                var statement = connection.createStatement()) {
+            statement.execute("COPY (SELECT * FROM (VALUES ('1', 'Koné'), ('2', 'Yao')) AS t(id, nom)) TO '"
+                    + file.toAbsolutePath().toString().replace('\\', '/') + "' (FORMAT PARQUET)");
+        }
+        return file;
+    }
+
+    /** Reçoit un fichier sans lancer son chargement : l'analyste va d'abord regarder l'aperçu. */
+    private long receive(String name, String content) throws Exception {
+        var response = mvc.perform(multipart("/api/imports")
+                        .file(file(name, content))
+                        .param("load", "false")
+                        .with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+        return json.readTree(response.getResponse().getContentAsString())
+                .get("id")
+                .asLong();
     }
 
     private static MockMultipartFile file(String name, String content) {

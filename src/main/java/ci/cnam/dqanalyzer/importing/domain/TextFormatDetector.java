@@ -1,7 +1,7 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
+import ci.cnam.dqanalyzer.importing.DelimitedSettings;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
-import ci.cnam.dqanalyzer.importing.ImportSettings;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -29,7 +29,7 @@ import org.apache.commons.csv.CSVParser;
  * accepte tous les octets. Séparateur : on essaie chaque candidat du CDC et on garde celui qui donne
  * le nombre de colonnes le plus régulier.
  */
-public final class CsvFormatDetector {
+public final class TextFormatDetector {
 
     static final int SAMPLE_SIZE = 64 * 1024;
 
@@ -40,7 +40,7 @@ public final class CsvFormatDetector {
     private static final byte[] UTF16BE_BOM = {(byte) 0xFE, (byte) 0xFF};
 
     /** Détecte les paramètres d'un fichier déposé sur le disque. */
-    public ImportSettings detect(Path file) {
+    public DelimitedSettings detect(Path file) {
         try (var in = Files.newInputStream(file)) {
             return detect(in);
         } catch (IOException e) {
@@ -48,8 +48,24 @@ public final class CsvFormatDetector {
         }
     }
 
+    /**
+     * Détecte le seul encodage, pour les formats texte qui n'ont pas de séparateur : largeur fixe,
+     * XML, JSON (IMP-07).
+     */
+    public String detectCharsetName(Path file) {
+        try (var in = Files.newInputStream(file)) {
+            byte[] sample = readSample(in);
+            if (sample.length == 0) {
+                throw new ImportRejectedException("import.error.fichier-vide");
+            }
+            return detectEncoding(sample, sample.length == SAMPLE_SIZE).charsetName();
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
+        }
+    }
+
     /** Lit au plus {@value #SAMPLE_SIZE} octets du flux, qu'il ne ferme pas. */
-    public ImportSettings detect(InputStream in) {
+    public DelimitedSettings detect(InputStream in) {
         byte[] sample = readSample(in);
         if (sample.length == 0) {
             throw new ImportRejectedException("import.error.fichier-vide");
@@ -58,7 +74,7 @@ public final class CsvFormatDetector {
         var encoding = detectEncoding(sample, truncated);
         String text =
                 new String(sample, encoding.bomLength(), sample.length - encoding.bomLength(), encoding.charset());
-        return new ImportSettings(encoding.charsetName(), detectDelimiter(text, truncated), QUOTE, true);
+        return new DelimitedSettings(encoding.charsetName(), detectDelimiter(text, truncated), QUOTE, true);
     }
 
     private static byte[] readSample(InputStream in) {
@@ -99,7 +115,7 @@ public final class CsvFormatDetector {
         int bestRegularRecords = -1;
         int bestColumns = 0;
         int bestRecords = 0;
-        for (char candidate : ImportSettings.SUPPORTED_DELIMITERS) {
+        for (char candidate : DelimitedSettings.SUPPORTED_DELIMITERS) {
             var columnCounts = columnCounts(text, candidate, truncated);
             if (columnCounts.isEmpty() || columnCounts.get(0) < 2) {
                 continue;

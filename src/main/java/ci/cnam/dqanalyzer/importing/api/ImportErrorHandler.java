@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * Traduit les refus d'import en réponses lisibles (IMP-05, ERG-02) : le texte vient de
  * messages.properties, la clé portée par l'exception ne sort jamais vers l'utilisateur.
  */
-@RestControllerAdvice(assignableTypes = ImportController.class)
+@RestControllerAdvice(assignableTypes = {ImportController.class, UploadController.class})
 class ImportErrorHandler {
 
     private final MessageSource messages;

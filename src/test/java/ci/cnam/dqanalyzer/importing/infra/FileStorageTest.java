@@ -76,7 +76,8 @@ class FileStorageTest {
 
     private static FileStorage storage(Path directory, DataSize maxFileSize) {
         return new FileStorage(new ImportProperties(
-                new ImportProperties.Storage(directory), new ImportProperties.Upload(maxFileSize)));
+                new ImportProperties.Storage(directory),
+                new ImportProperties.Upload(maxFileSize, DataSize.ofMegabytes(10))));
     }
 
     private static long filesIn(Path directory) throws IOException {

@@ -1,0 +1,292 @@
+package ci.cnam.dqanalyzer.importing.infra;
+
+import ci.cnam.dqanalyzer.importing.FixedWidthSettings;
+import ci.cnam.dqanalyzer.importing.ImportFormat;
+import ci.cnam.dqanalyzer.importing.ImportPreview;
+import ci.cnam.dqanalyzer.importing.ImportPreview.PreviewRow;
+import ci.cnam.dqanalyzer.importing.ImportProgress;
+import ci.cnam.dqanalyzer.importing.ImportRejectedException;
+import ci.cnam.dqanalyzer.importing.ImportService;
+import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.JsonSettings;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
+import ci.cnam.dqanalyzer.importing.ReceivedFile;
+import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.importing.XmlSettings;
+import ci.cnam.dqanalyzer.importing.domain.ImportValidation;
+import ci.cnam.dqanalyzer.importing.domain.RowSources;
+import ci.cnam.dqanalyzer.importing.domain.SheetNames;
+import ci.cnam.dqanalyzer.importing.domain.SingleEntryArchive;
+import ci.cnam.dqanalyzer.importing.domain.SourceFile;
+import ci.cnam.dqanalyzer.importing.domain.TextFormatDetector;
+import ci.cnam.dqanalyzer.security.CurrentUserProvider;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.NoSuchElementException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * Import d'un fichier : réception (IMP-05, IMP-06, IMP-07) puis chargement en tâche de fond vers
+ * DuckDB (PERF-03). Le format reconnu décide des paramètres proposés à l'analyste, jamais de la
+ * suite : le chargement est le même pour tous (CDC §5.1 bis).
+ *
+ * <p>Aucune valeur de cellule n'est journalisée, jamais : les fichiers contiennent des données
+ * personnelles d'assurés. Les traces se limitent à des identifiants techniques et des compteurs.
+ */
+@Service
+class FileImportService implements ImportService {
+
+    private static final Logger log = LoggerFactory.getLogger(FileImportService.class);
+
+    /** Les noms de table sont fabriqués ici, jamais déduits du nom du fichier. */
+    private static final String TABLE_PREFIX = "ds_";
+
+    private final SourceFileRepository sourceFiles;
+    private final FileStorage storage;
+    private final ImportValidation validation;
+    private final TextFormatDetector detector;
+    private final DuckDbTableLoader loader;
+    private final DuckDbParquetLoader parquetLoader;
+    private final CurrentUserProvider currentUser;
+    private final ObjectMapper json;
+    private final MessageSource messages;
+    private final long maxSizeBytes;
+
+    FileImportService(
+            SourceFileRepository sourceFiles,
+            FileStorage storage,
+            ImportValidation validation,
+            TextFormatDetector detector,
+            DuckDbTableLoader loader,
+            DuckDbParquetLoader parquetLoader,
+            CurrentUserProvider currentUser,
+            ObjectMapper json,
+            MessageSource messages,
+            ImportProperties properties) {
+        this.sourceFiles = sourceFiles;
+        this.storage = storage;
+        this.validation = validation;
+        this.detector = detector;
+        this.loader = loader;
+        this.parquetLoader = parquetLoader;
+        this.currentUser = currentUser;
+        this.json = json;
+        this.messages = messages;
+        this.maxSizeBytes = properties.upload().maxFileSize().toBytes();
+    }
+
+    @Override
+    public ReceivedFile receive(InputStream content, String originalName) {
+        validation.checkName(originalName); // avant d'écrire : inutile de recopier un fichier refusé
+        var stored = storage.store(content, maxSizeBytes);
+        try {
+            var format = validation.checkAcceptable(stored.path(), originalName);
+            return format == ImportFormat.ZIP
+                    ? receiveArchive(stored, originalName)
+                    : save(stored, originalName, format, stored.path(), null, null);
+        } catch (RuntimeException e) {
+            storage.delete(stored.path()); // un fichier refusé ne reste pas sur le disque
+            throw e;
+        }
+    }
+
+    /**
+     * Archive à un seul fichier (IMP-09) : son contenu est extrait à côté, puis contrôlé comme un
+     * fichier reçu directement. L'archive reste le fichier conservé, avec sa taille et son empreinte.
+     */
+    private ReceivedFile receiveArchive(StoredFile archive, String originalName) {
+        StoredFile extracted = null;
+        String entryName;
+        try (var content = SingleEntryArchive.open(archive.path())) {
+            entryName = content.entryName();
+            extracted = storage.store(content.content(), maxSizeBytes);
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.archive-illisible");
+        } catch (RuntimeException e) {
+            if (extracted != null) {
+                storage.delete(extracted.path());
+            }
+            throw e;
+        }
+        try {
+            var format = validation.checkAcceptable(extracted.path(), entryName);
+            if (format == ImportFormat.ZIP) {
+                throw new ImportRejectedException("import.error.archive-imbriquee");
+            }
+            return save(archive, originalName, format, extracted.path(), extracted.path(), entryName);
+        } catch (RuntimeException e) {
+            storage.delete(extracted.path());
+            throw e;
+        }
+    }
+
+    /**
+     * @param stored fichier conservé, celui que l'analyste a envoyé (IMP-06)
+     * @param fileToRead fichier à lire : le même, ou celui extrait d'une archive
+     */
+    private ReceivedFile save(
+            StoredFile stored,
+            String originalName,
+            ImportFormat format,
+            Path fileToRead,
+            Path extractedPath,
+            String extractedName) {
+        var settings = detect(format, fileToRead);
+        var sourceFile = new SourceFile(
+                originalName,
+                stored.sizeBytes(),
+                stored.sha256(),
+                format,
+                toJson(settings),
+                stored.path().toString(),
+                currentUser.currentUserId());
+        if (extractedPath != null) {
+            sourceFile.contentExtractedTo(extractedPath.toString(), extractedName);
+        }
+        sourceFiles.save(sourceFile);
+        log.info(
+                "Fichier {} reçu ({} octets), format {}, {}{}",
+                sourceFile.getId(),
+                stored.sizeBytes(),
+                format,
+                settings.hasHeader() ? "en-tête présent" : "sans en-tête",
+                extractedPath == null ? "" : ", extrait d'une archive");
+        return new ReceivedFile(sourceFile.getId(), originalName, stored.sizeBytes(), stored.sha256(), settings);
+    }
+
+    /**
+     * Paramètres proposés à l'analyste (IMP-07). Un fichier texte se devine (encodage, séparateur) ;
+     * un tableur part des choix les plus courants, que l'analyste corrigera à l'écran (IMP-02).
+     */
+    private ImportSettings detect(ImportFormat format, Path file) {
+        return switch (format) {
+            case DELIMITED -> detector.detect(file);
+            case XLSX, XLS, ODS -> SheetSettings.defaults(format);
+            // Le gabarit ne se devine pas : l'analyste le saisit, ou le reprend d'un modèle (IMP-08).
+            case FIXED_WIDTH -> FixedWidthSettings.empty(detector.detectCharsetName(file));
+            case XML -> XmlSettings.undetermined();
+            case JSON -> JsonSettings.root();
+            case PARQUET -> new ParquetSettings();
+            // L.archive a déjà été ouverte : le format retenu est celui du fichier qu.elle contient.
+            case ZIP -> throw new IllegalStateException("Une archive ne se lit pas directement");
+        };
+    }
+
+    @Override
+    public ImportSettings settingsOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        return json.readValue(sourceFile.getImportSettings(), ImportSettings.class);
+    }
+
+    @Override
+    public List<String> sheetNamesOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        return SheetNames.of(Path.of(sourceFile.getFileToRead()), sourceFile.getFormat());
+    }
+
+    @Override
+    public ImportPreview preview(long sourceFileId, ImportSettings settings) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        Path file = Path.of(sourceFile.getFileToRead());
+        if (settings instanceof ParquetSettings) {
+            return parquetLoader.preview(file, ImportPreview.ROWS);
+        }
+        try (var source = RowSources.open(file, settings)) {
+            var rows = new ArrayList<PreviewRow>();
+            boolean truncated = false;
+            while (source.next()) {
+                if (rows.size() == ImportPreview.ROWS) {
+                    truncated = true; // la ligne lue en trop prouve qu'il en reste
+                    break;
+                }
+                var values = new ArrayList<String>(source.columns().size());
+                for (int column = 0; column < source.columns().size(); column++) {
+                    values.add(source.field(column));
+                }
+                rows.add(new PreviewRow(source.rowNumber(), values));
+            }
+            return new ImportPreview(source.columns(), rows, truncated);
+        } catch (IOException e) {
+            throw new ImportRejectedException("import.error.fichier-illisible");
+        }
+    }
+
+    @Async
+    @Override
+    public void startLoad(long sourceFileId, ImportSettings settings) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        Path database = storage.databaseFor(sourceFileId);
+        String tableName = TABLE_PREFIX + sourceFileId;
+        sourceFile.startLoading(toJson(settings), database.toString(), tableName);
+        sourceFiles.save(sourceFile);
+        try {
+            var imported = loader.load(
+                    Path.of(sourceFile.getFileToRead()),
+                    settings,
+                    database,
+                    tableName,
+                    (percent, rowsLoaded) -> reportProgress(sourceFile, percent));
+            sourceFile.finishLoading(imported.rowCount(), imported.columns().size(), imported.raggedRowCount());
+            log.info(
+                    "Fichier {} chargé dans {} : {} lignes, {} colonnes, {} ligne(s) incomplète(s)",
+                    sourceFileId,
+                    tableName,
+                    imported.rowCount(),
+                    imported.columns().size(),
+                    imported.raggedRowCount());
+        } catch (ImportRejectedException e) {
+            sourceFile.failLoading(resolve(e));
+            log.warn("Fichier {} refusé au chargement : {}", sourceFileId, e.messageKey());
+        } catch (RuntimeException e) {
+            sourceFile.failLoading(message("import.error.chargement-impossible"));
+            log.error("Chargement du fichier {} impossible", sourceFileId, e);
+        }
+        sourceFiles.save(sourceFile);
+    }
+
+    @Override
+    public ImportProgress progressOf(long sourceFileId) {
+        var sourceFile = sourceFiles.findById(sourceFileId).orElseThrow(() -> unknown(sourceFileId));
+        return new ImportProgress(
+                sourceFileId,
+                sourceFile.getImportStatus(),
+                sourceFile.getImportProgress(),
+                sourceFile.getRowCount() == null ? 0 : sourceFile.getRowCount(),
+                sourceFile.getRaggedRowCount() == null ? 0 : sourceFile.getRaggedRowCount(),
+                sourceFile.getImportError() == null ? "" : sourceFile.getImportError());
+    }
+
+    private void reportProgress(SourceFile sourceFile, int percent) {
+        sourceFile.reportProgress(percent);
+        sourceFiles.save(sourceFile);
+    }
+
+    private String toJson(ImportSettings settings) {
+        return json.writeValueAsString(settings);
+    }
+
+    /**
+     * Le message est enregistré rédigé, en français : l'outil n'a qu'une langue (CDC), et le
+     * chargement se déroule hors de toute requête, donc hors de la langue d'un utilisateur.
+     */
+    private String resolve(ImportRejectedException e) {
+        return messages.getMessage(e.messageKey(), e.arguments().toArray(), Locale.FRENCH);
+    }
+
+    private String message(String key) {
+        return messages.getMessage(key, null, Locale.FRENCH);
+    }
+
+    private static NoSuchElementException unknown(long sourceFileId) {
+        return new NoSuchElementException("Import inconnu : " + sourceFileId);
+    }
+}

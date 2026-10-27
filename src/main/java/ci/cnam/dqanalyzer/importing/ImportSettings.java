@@ -1,61 +1,32 @@
 package ci.cnam.dqanalyzer.importing;
 
-import java.nio.charset.Charset;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 /**
- * Paramètres de lecture d'un fichier texte délimité (IMP-03). Proposés par la détection
- * automatique (IMP-07), puis corrigeables par l'analyste : d'où les méthodes {@code with*}.
+ * Paramètres de lecture d'un fichier : ce que la détection automatique propose (IMP-07) et que
+ * l'analyste peut corriger (IMP-02, IMP-03) avant le chargement. Chaque famille de format a les
+ * siens ; ils sont enregistrés tels quels avec le fichier source, et le seront dans le modèle
+ * d'analyse pour ne pas les ressaisir au fichier suivant (IMP-08).
  *
- * <p>Les encodages et séparateurs sont volontairement limités à ceux du CDC : tout ce qui sort de ces
- * listes est refusé plutôt que deviné.
+ * <p>Le type sert de discriminant {@code @type} dans le JSON enregistré en base : les paramètres se
+ * relisent sans deviner de quel format ils venaient.
  */
-public record ImportSettings(String charsetName, char delimiter, char quote, boolean hasHeader) {
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@type")
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = DelimitedSettings.class, name = "DELIMITED"),
+    @JsonSubTypes.Type(value = SheetSettings.class, name = "SHEET"),
+    @JsonSubTypes.Type(value = FixedWidthSettings.class, name = "FIXED_WIDTH"),
+    @JsonSubTypes.Type(value = XmlSettings.class, name = "XML"),
+    @JsonSubTypes.Type(value = JsonSettings.class, name = "JSON"),
+    @JsonSubTypes.Type(value = ParquetSettings.class, name = "PARQUET")
+})
+public sealed interface ImportSettings
+        permits DelimitedSettings, SheetSettings, FixedWidthSettings, XmlSettings, JsonSettings, ParquetSettings {
 
-    /** UTF-8 et Windows-1252 (CDC IMP-03) ; UTF-16 n'est reconnu que par sa marque d'ordre d'octets. */
-    public static final List<String> SUPPORTED_CHARSETS = List.of("UTF-8", "windows-1252", "UTF-16LE", "UTF-16BE");
+    /** Format que ces paramètres décrivent. */
+    ImportFormat format();
 
-    /** Point-virgule, virgule, tabulation (CDC IMP-03). */
-    public static final List<Character> SUPPORTED_DELIMITERS = List.of(';', ',', '\t');
-
-    private static final Set<Character> SUPPORTED_QUOTES = Set.of('"', '\'');
-
-    public ImportSettings {
-        charsetName = canonicalCharsetName(charsetName);
-        if (!SUPPORTED_DELIMITERS.contains(delimiter)) {
-            throw new ImportRejectedException("import.error.separateur-inconnu");
-        }
-        if (!SUPPORTED_QUOTES.contains(quote) || quote == delimiter) {
-            throw new ImportRejectedException("import.error.guillemet-inconnu");
-        }
-    }
-
-    public Charset charset() {
-        return Charset.forName(charsetName);
-    }
-
-    public ImportSettings withCharsetName(String newCharsetName) {
-        return new ImportSettings(newCharsetName, delimiter, quote, hasHeader);
-    }
-
-    public ImportSettings withDelimiter(char newDelimiter) {
-        return new ImportSettings(charsetName, newDelimiter, quote, hasHeader);
-    }
-
-    public ImportSettings withHasHeader(boolean newHasHeader) {
-        return new ImportSettings(charsetName, delimiter, quote, newHasHeader);
-    }
-
-    /** Renvoie l'orthographe de référence de l'encodage ; refuse ce qui n'est pas dans la liste. */
-    private static String canonicalCharsetName(String name) {
-        String candidate = name == null ? "" : name.trim();
-        for (String supported : SUPPORTED_CHARSETS) {
-            if (supported.toLowerCase(Locale.ROOT).equals(candidate.toLowerCase(Locale.ROOT))) {
-                return supported;
-            }
-        }
-        throw new ImportRejectedException("import.error.encodage-inconnu");
-    }
+    /** Vrai si la première ligne lue porte les noms de colonnes plutôt que des données. */
+    boolean hasHeader();
 }

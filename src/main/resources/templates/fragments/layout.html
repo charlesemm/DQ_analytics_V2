@@ -17,6 +17,9 @@
     <a class="navbar-brand fw-semibold" th:href="@{/}" th:text="#{app.name}">DQ-Analyzer</a>
     <ul class="navbar-nav me-auto">
       <li class="nav-item"><a class="nav-link" th:href="@{/}" th:text="#{nav.home}">Accueil</a></li>
+      <li class="nav-item" th:if="${canImport}">
+        <a class="nav-link" th:href="@{/imports/nouveau}" th:text="#{nav.import}">Importer un fichier</a>
+      </li>
     </ul>
     <form th:action="@{/logout}" method="post" class="d-flex">
       <button type="submit" class="btn btn-outline-light btn-sm" th:text="#{nav.logout}">Se déconnecter</button>

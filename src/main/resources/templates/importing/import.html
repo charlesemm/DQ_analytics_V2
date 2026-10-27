@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{import.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+
+<!-- Jeton anti-rejeu lu par import-page.js : les appels en fetch ne passent pas par un formulaire. -->
+<meta name="csrf-token" th:content="${_csrf.token}">
+
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{import.title}">Importer un fichier</h1>
+  <p class="text-muted" th:text="#{import.intro}"></p>
+
+  <div id="erreur" class="alert alert-danger d-none" role="alert"></div>
+
+  <!-- Étape 1 : choisir le fichier (IMP-01) -->
+  <section id="etape-choix" class="card card-body shadow-sm mb-4">
+    <div id="zone-depot" class="zone-depot text-center p-5 rounded border border-2 border-dashed">
+      <p class="mb-2 fw-semibold" th:text="#{import.deposer}">Glissez votre fichier ici</p>
+      <p class="text-muted small mb-3" th:text="#{import.formats(${acceptedExtensions})}"></p>
+      <label class="btn btn-primary mb-0">
+        <span th:text="#{import.parcourir}">Parcourir…</span>
+        <input id="fichier" type="file" class="d-none" th:accept="${acceptedExtensions}">
+      </label>
+    </div>
+  </section>
+
+  <!-- Étape 2 : l'envoi, par morceaux avec reprise (IMP-01, PERF-02) -->
+  <section id="etape-envoi" class="card card-body shadow-sm mb-4 d-none">
+    <h2 class="h6" th:text="#{import.envoi}">Envoi du fichier</h2>
+    <p id="envoi-nom" class="text-muted small mb-2"></p>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div id="envoi-barre" class="progress-bar progress-bar-striped progress-bar-animated"></div>
+    </div>
+  </section>
+
+  <!-- Étape 3 : les paramètres de lecture et l'aperçu (IMP-02, IMP-03, IMP-04, IMP-08) -->
+  <section id="etape-apercu" class="card card-body shadow-sm mb-4 d-none">
+    <h2 class="h6" th:text="#{import.parametres}">Paramètres de lecture</h2>
+    <p class="text-muted small" th:text="#{import.parametres.aide}"></p>
+
+    <form id="parametres" class="row g-3 align-items-end">
+      <div class="col-md-3" data-pour="DELIMITED">
+        <label for="delimiter" class="form-label" th:text="#{import.separateur}">Séparateur</label>
+        <select id="delimiter" name="delimiter" class="form-select">
+          <option th:each="nom : ${delimiters}" th:value="${nom}" th:text="#{'delimiter.' + ${nom}}"></option>
+        </select>
+      </div>
+      <div class="col-md-3" data-pour="DELIMITED FIXED_WIDTH">
+        <label for="charset" class="form-label" th:text="#{import.encodage}">Encodage</label>
+        <select id="charset" name="charset" class="form-select">
+          <option th:each="nom : ${charsets}" th:value="${nom}" th:text="${nom}"></option>
+        </select>
+      </div>
+      <div class="col-md-4" data-pour="XLSX XLS ODS">
+        <label for="sheet" class="form-label" th:text="#{import.feuille}">Feuille</label>
+        <select id="sheet" name="sheet" class="form-select"></select>
+      </div>
+      <div class="col-md-2" data-pour="XLSX XLS ODS">
+        <label for="headerRow" class="form-label" th:text="#{import.ligne-entete}">Ligne d'en-tête</label>
+        <input id="headerRow" name="headerRow" type="number" min="1" class="form-control">
+      </div>
+      <div class="col-md-6" data-pour="FIXED_WIDTH">
+        <label for="template" class="form-label" th:text="#{import.gabarit}">Gabarit</label>
+        <input id="template" name="template" class="form-control" th:placeholder="#{import.gabarit.exemple}">
+        <div class="form-text" th:text="#{import.gabarit.aide}"></div>
+      </div>
+      <div class="col-md-4" data-pour="XML">
+        <label for="rowElement" class="form-label" th:text="#{import.element-repete}">Élément répété</label>
+        <input id="rowElement" name="rowElement" class="form-control">
+      </div>
+      <div class="col-md-4" data-pour="JSON">
+        <label for="arrayPath" class="form-label" th:text="#{import.chemin-tableau}">Chemin du tableau</label>
+        <input id="arrayPath" name="arrayPath" class="form-control">
+      </div>
+      <div class="col-md-3 form-check ms-2" data-pour="DELIMITED FIXED_WIDTH XLSX XLS ODS">
+        <input id="hasHeader" name="hasHeader" type="checkbox" class="form-check-input" checked>
+        <label for="hasHeader" class="form-check-label" th:text="#{import.avec-entete}">Première ligne = en-tête</label>
+      </div>
+      <div class="col-12">
+        <button id="actualiser" type="submit" class="btn btn-outline-secondary btn-sm"
+                th:text="#{import.actualiser}">Actualiser l'aperçu</button>
+      </div>
+    </form>
+
+    <hr>
+    <h2 class="h6" th:text="#{import.apercu(${previewRows})}">Aperçu</h2>
+    <p id="apercu-tronque" class="text-muted small d-none" th:text="#{import.apercu.tronque(${previewRows})}"></p>
+    <div class="table-responsive apercu">
+      <table class="table table-sm table-striped table-bordered align-middle">
+        <thead><tr id="apercu-entete"></tr></thead>
+        <tbody id="apercu-lignes"></tbody>
+      </table>
+    </div>
+    <div class="mt-3">
+      <button id="charger" type="button" class="btn btn-primary" th:text="#{import.charger}">
+        Lancer le chargement
+      </button>
+      <button id="recommencer" type="button" class="btn btn-link" th:text="#{import.recommencer}">
+        Choisir un autre fichier
+      </button>
+    </div>
+  </section>
+
+  <!-- Étape 4 : le chargement vers la base d'analyse, en tâche de fond (IMP-03, PERF-03) -->
+  <section id="etape-chargement" class="card card-body shadow-sm mb-4 d-none">
+    <h2 class="h6" th:text="#{import.chargement}">Chargement</h2>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div id="chargement-barre" class="progress-bar"></div>
+    </div>
+    <p id="chargement-etat" class="text-muted small mt-2"></p>
+    <div id="chargement-resultat" class="alert alert-success d-none mt-2" role="status"></div>
+    <div id="chargement-echec" class="alert alert-danger d-none mt-2" role="alert"></div>
+  </section>
+
+  <!-- Libellés passés au script : aucun texte en dur dans le JavaScript (ERG-02). -->
+  <div id="textes" class="d-none"
+       th:data-lignes="#{import.js.lignes}"
+       th:data-colonnes="#{import.js.colonnes}"
+       th:data-incompletes="#{import.js.incompletes}"
+       th:data-en-cours="#{import.js.en-cours}"
+       th:data-termine="#{import.js.termine}"
+       th:data-vide="#{import.js.vide}"
+       th:data-envoi-en-cours="#{import.js.envoi-en-cours}"></div>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+<script type="module" th:src="@{/js/import-page.js}"></script>
+</body>
+</html>

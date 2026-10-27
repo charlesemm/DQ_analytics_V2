@@ -3,15 +3,20 @@ package ci.cnam.dqanalyzer.importing.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import ci.cnam.dqanalyzer.importing.DelimitedSettings;
+import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
-import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
+import ci.cnam.dqanalyzer.importing.ParquetSettings;
+import ci.cnam.dqanalyzer.importing.SheetSettings;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -19,16 +24,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Lecture en flux d'un CSV vers une table DuckDB par l'appender (PERF-03). Le n° de ligne d'origine
+ * Chargement en flux d'un fichier vers une table DuckDB par l'appender (PERF-03), quel que soit son
+ * format : le lecteur change, la table produite est la même. Le n° de ligne d'origine
  * est conservé dans {@code _row_num} : en-tête = ligne 1, première donnée = ligne 2, comme dans les
  * jeux de test des évaluateurs.
  */
-class DuckDbCsvLoaderTest {
+class DuckDbTableLoaderTest {
 
-    private static final ImportSettings SEMICOLON_UTF8 = new ImportSettings("UTF-8", ';', '"', true);
+    private static final DelimitedSettings SEMICOLON_UTF8 = new DelimitedSettings("UTF-8", ';', '"', true);
 
     private final DuckDbDatabases databases = new DuckDbDatabases();
-    private final DuckDbCsvLoader loader = new DuckDbCsvLoader(databases);
+    private final DuckDbParquetLoader parquetLoader = new DuckDbParquetLoader(databases);
+    private final DuckDbTableLoader loader = new DuckDbTableLoader(databases, parquetLoader);
 
     @Test
     void charge_les_lignes_avec_leur_numero_d_origine(@TempDir Path directory) throws Exception {
@@ -56,7 +63,7 @@ class DuckDbCsvLoaderTest {
     @Test
     void la_table_reste_lisible_apres_fermeture_de_la_connexion(@TempDir Path directory) throws Exception {
         Path database = directory.resolve("analyse.duckdb");
-        var settings = new ImportSettings("UTF-8", ',', '"', true);
+        var settings = new DelimitedSettings("UTF-8", ',', '"', true);
 
         var imported = loader.load(fixture("utf8_virgule.csv"), settings, database, "ds_2");
 
@@ -66,7 +73,7 @@ class DuckDbCsvLoaderTest {
 
     @Test
     void lit_un_fichier_windows_1252(@TempDir Path directory) throws Exception {
-        var settings = new ImportSettings("windows-1252", ';', '"', true);
+        var settings = new DelimitedSettings("windows-1252", ';', '"', true);
 
         var imported =
                 loader.load(fixture("win1252_pointvirgule.csv"), settings, directory.resolve("w.duckdb"), "ds_3");
@@ -165,6 +172,49 @@ class DuckDbCsvLoaderTest {
     }
 
     @Test
+    void charge_un_classeur_excel_comme_un_fichier_texte(@TempDir Path directory) throws Exception {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"),
+                Workbooks.sheet(
+                        "Assurés", List.of(List.of("id", "naissance"), List.of("1", LocalDate.of(1994, 12, 31)))));
+
+        var imported = loader.load(
+                classeur, SheetSettings.defaults(ImportFormat.XLSX), directory.resolve("classeur.duckdb"), "ds_12");
+
+        assertThat(imported.columns()).containsExactly("id", "naissance");
+        assertThat(imported.rowCount()).isEqualTo(1);
+        assertThat(rows(imported, "_row_num, id, naissance")).containsExactly(List.of("2", "1", "31/12/1994"));
+    }
+
+    @Test
+    void charge_un_fichier_parquet_en_numerotant_les_lignes_a_partir_de_un(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(
+                directory, "SELECT * FROM (VALUES ('1', 'Koné', 'Abidjan'), ('2', 'Yao', '')) AS t(id, nom, ville)");
+
+        var imported = loader.load(parquet, new ParquetSettings(), directory.resolve("parquet.duckdb"), "ds_13");
+
+        assertThat(imported.columns()).containsExactly("id", "nom", "ville");
+        assertThat(imported.rowCount()).isEqualTo(2);
+        assertThat(imported.raggedRowCount()).isZero();
+        assertThat(rows(imported, "_row_num, id, nom"))
+                .containsExactly(List.of("1", "1", "Koné"), List.of("2", "2", "Yao"));
+        assertThat(count(imported, "ville IS NULL")).isEqualTo(1);
+    }
+
+    @Test
+    void refuse_un_fichier_parquet_sans_aucune_ligne(@TempDir Path directory) throws Exception {
+        Path parquet = parquet(
+                directory,
+                "SELECT * FROM (VALUES ('1', 'Koné', 'Abidjan')) AS t(id, nom, ville)" + " WHERE id IS NULL");
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(
+                        () -> loader.load(parquet, new ParquetSettings(), directory.resolve("vide.duckdb"), "ds_14"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.aucune-donnee");
+    }
+
+    @Test
     void refuse_un_fichier_sans_aucune_ligne_de_donnee(@TempDir Path directory) {
         assertThatExceptionOfType(ImportRejectedException.class)
                 .isThrownBy(() ->
@@ -214,6 +264,17 @@ class DuckDbCsvLoaderTest {
         assertThat(count(imported, "_row_num = " + (expectedRows + 1))).isEqualTo(1);
     }
 
+    /** Fabrique un fichier Parquet d'essai : DuckDB sait aussi l'écrire, aucune bibliothèque en plus. */
+    private Path parquet(Path directory, String query) throws SQLException {
+        Path file = directory.resolve("donnees.parquet");
+        try (var connection = databases.open(directory.resolve("source.duckdb"));
+                var statement = connection.createStatement()) {
+            statement.execute("COPY (" + query + ") TO '"
+                    + file.toAbsolutePath().toString().replace('\\', '/') + "' (FORMAT PARQUET)");
+        }
+        return file;
+    }
+
     private Path csv(Path directory, String content) throws IOException {
         Path file = directory.resolve("donnees" + Math.abs(content.hashCode()) + ".csv");
         Files.writeString(file, content, StandardCharsets.UTF_8);
@@ -250,7 +311,7 @@ class DuckDbCsvLoaderTest {
 
     private static Path fixture(String name) {
         var url = Objects.requireNonNull(
-                DuckDbCsvLoaderTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
+                DuckDbTableLoaderTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
         try {
             return Path.of(url.toURI());
         } catch (URISyntaxException e) {

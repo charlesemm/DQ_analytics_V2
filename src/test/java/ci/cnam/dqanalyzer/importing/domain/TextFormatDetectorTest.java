@@ -19,9 +19,9 @@ import org.junit.jupiter.api.io.TempDir;
  * IMP-07 : détection de l'encodage et du séparateur. La détection ne lit qu'un échantillon du
  * fichier, jamais la totalité (PERF-03).
  */
-class CsvFormatDetectorTest {
+class TextFormatDetectorTest {
 
-    private final CsvFormatDetector detector = new CsvFormatDetector();
+    private final TextFormatDetector detector = new TextFormatDetector();
 
     @Test
     void detecte_utf8_et_la_virgule() {
@@ -92,17 +92,17 @@ class CsvFormatDetectorTest {
                 writer.write(i + ";nom" + i + ";Abidjan\n");
             }
         }
-        assertThat(Files.size(large)).isGreaterThan(4L * CsvFormatDetector.SAMPLE_SIZE);
+        assertThat(Files.size(large)).isGreaterThan(4L * TextFormatDetector.SAMPLE_SIZE);
 
         try (var counting = new CountingInputStream(Files.newInputStream(large))) {
             assertThat(detector.detect(counting).delimiter()).isEqualTo(';');
-            assertThat(counting.bytesRead()).isLessThanOrEqualTo(CsvFormatDetector.SAMPLE_SIZE);
+            assertThat(counting.bytesRead()).isLessThanOrEqualTo(TextFormatDetector.SAMPLE_SIZE);
         }
     }
 
     private static Path fixture(String name) {
         var url = Objects.requireNonNull(
-                CsvFormatDetectorTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
+                TextFormatDetectorTest.class.getClassLoader().getResource("imports/" + name), "fixture " + name);
         try {
             return Path.of(url.toURI());
         } catch (URISyntaxException e) {

@@ -1,13 +1,22 @@
 package ci.cnam.dqanalyzer.importing.domain;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
+import ci.cnam.dqanalyzer.importing.ImportFormat;
 import ci.cnam.dqanalyzer.importing.ImportRejectedException;
+import ci.cnam.dqanalyzer.testsupport.OpenDocuments;
+import ci.cnam.dqanalyzer.testsupport.Workbooks;
+import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** IMP-05 : refuser un fichier vide, corrompu ou trop grand. Le type réel est vérifié, pas l'extension seule. */
 class ImportValidationTest {
@@ -34,6 +43,75 @@ class ImportValidationTest {
     void accepte_un_fichier_windows_1252() {
         assertThatCode(() -> validation.checkAcceptable(fixture("win1252_pointvirgule.csv"), "assures.csv"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void accepte_un_classeur_excel(@TempDir Path directory) {
+        Path classeur = Workbooks.write(
+                directory.resolve("assures.xlsx"), Workbooks.sheet("Feuil1", List.of(List.of("id"), List.of("1"))));
+
+        assertThat(validation.checkAcceptable(classeur, "assures.xlsx")).isEqualTo(ImportFormat.XLSX);
+    }
+
+    @Test
+    void refuse_un_fichier_texte_renomme_en_xlsx(@TempDir Path directory) throws IOException {
+        Path faux = directory.resolve("assures.xlsx");
+        Files.writeString(faux, "id;nom\n1;Koné\n", StandardCharsets.UTF_8);
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(() -> validation.checkAcceptable(faux, "assures.xlsx"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.type-inattendu");
+    }
+
+    @Test
+    void accepte_un_classeur_excel_97_et_un_classeur_opendocument(@TempDir Path directory) {
+        var contenu = List.<List<Object>>of(List.of("id"), List.of("1"));
+        Path xls = Workbooks.writeXls(directory.resolve("assures.xls"), Workbooks.sheet("Feuil1", contenu));
+        Path ods = OpenDocuments.write(directory.resolve("assures.ods"), Workbooks.sheet("Feuil1", contenu));
+
+        assertThat(validation.checkAcceptable(xls, "assures.xls")).isEqualTo(ImportFormat.XLS);
+        assertThat(validation.checkAcceptable(ods, "assures.ods")).isEqualTo(ImportFormat.ODS);
+    }
+
+    @Test
+    void les_formats_lus_en_memoire_sont_limites_a_cent_megaoctets() {
+        long centMegaoctets = 100L * 1024 * 1024;
+
+        assertThat(ImportFormat.XLS.maxSizeBytes()).isEqualTo(centMegaoctets);
+        assertThat(ImportFormat.ODS.maxSizeBytes()).isEqualTo(centMegaoctets);
+        assertThat(ImportFormat.DELIMITED.maxSizeBytes()).isEqualTo(Long.MAX_VALUE);
+    }
+
+    @Test
+    void refuse_un_classeur_plus_grand_que_la_limite_du_format(@TempDir Path directory) {
+        var sansLimiteDeConfiguration = new ImportValidation(Long.MAX_VALUE);
+        Path xls =
+                Workbooks.writeXls(directory.resolve("assures.xls"), Workbooks.sheet("Feuil1", List.of(List.of("id"))));
+
+        // La limite du format, plus basse que celle de la configuration, est celle qui s'applique.
+        assertThat(ImportFormat.XLS.maxSizeBytes()).isLessThan(Long.MAX_VALUE);
+        assertThatCode(() -> sansLimiteDeConfiguration.checkAcceptable(xls, "assures.xls"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void accepte_un_fichier_parquet_a_sa_marque_de_debut(@TempDir Path directory) throws IOException {
+        Path parquet = directory.resolve("assures.parquet");
+        Files.write(parquet, "PAR1donnees".getBytes(StandardCharsets.US_ASCII));
+
+        assertThat(validation.checkAcceptable(parquet, "assures.parquet")).isEqualTo(ImportFormat.PARQUET);
+    }
+
+    @Test
+    void refuse_un_fichier_parquet_sans_sa_marque_de_debut(@TempDir Path directory) throws IOException {
+        Path faux = directory.resolve("assures.parquet");
+        Files.writeString(faux, "id;nom\n1;Koné\n", StandardCharsets.UTF_8);
+
+        assertThatExceptionOfType(ImportRejectedException.class)
+                .isThrownBy(() -> validation.checkAcceptable(faux, "assures.parquet"))
+                .extracting(ImportRejectedException::messageKey)
+                .isEqualTo("import.error.type-inattendu");
     }
 
     @Test

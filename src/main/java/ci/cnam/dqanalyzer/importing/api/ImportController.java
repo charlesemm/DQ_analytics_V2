@@ -1,12 +1,13 @@
 package ci.cnam.dqanalyzer.importing.api;
 
 import ci.cnam.dqanalyzer.importing.ImportService;
-import ci.cnam.dqanalyzer.importing.ImportSettings;
+import ci.cnam.dqanalyzer.importing.ImportStatus;
 import java.io.IOException;
 import java.net.URI;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Envoi d'un fichier et suivi de son chargement (IMP-03, IMP-05, IMP-06, IMP-07).
+ * Envoi d'un fichier et suivi de son chargement (IMP-02, IMP-03, IMP-05, IMP-06, IMP-07, IMP-08).
  *
  * <p>L'envoi rend la main dès que le fichier est écrit et contrôlé : la lecture vers DuckDB se
  * poursuit en tâche de fond, le client suit l'avancement sur {@code GET /api/imports/{id}}.
@@ -35,45 +36,55 @@ class ImportController {
     }
 
     /**
-     * @param delimiter SEMICOLON, COMMA ou TAB pour corriger la détection ; absent = détection retenue
-     * @param charset UTF-8 ou windows-1252 pour corriger la détection
-     * @param hasHeader présence d'une ligne d'en-tête ; absent = détection retenue
+     * @param corrections ce que l'analyste corrige de la détection ; tout est facultatif
+     * @param load faux pour s'arrêter après la réception, le temps de regarder l'aperçu (IMP-04) et
+     *     de corriger les paramètres ; le chargement est alors lancé par {@code POST /{id}/load}
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
     ResponseEntity<ImportResponse> upload(
             @RequestPart("file") MultipartFile file,
-            @RequestParam(required = false) String delimiter,
-            @RequestParam(required = false) String charset,
-            @RequestParam(required = false) Boolean hasHeader)
+            @ModelAttribute ImportCorrections corrections,
+            @RequestParam(defaultValue = "true") boolean load)
             throws IOException {
         var received = imports.receive(file.getInputStream(), file.getOriginalFilename());
-        var retained = correct(received.detectedSettings(), delimiter, charset, hasHeader);
-        imports.startLoad(received.sourceFileId(), retained);
+        var retained = ImportCorrector.correct(received.detectedSettings(), corrections);
+        if (load) {
+            imports.startLoad(received.sourceFileId(), retained);
+        }
         return ResponseEntity.accepted()
                 .location(URI.create("/api/imports/" + received.sourceFileId()))
-                .body(ImportResponse.of(received, retained));
+                .body(ImportResponse.of(received, retained, load ? ImportStatus.RUNNING : ImportStatus.PENDING));
+    }
+
+    /**
+     * Les {@value ci.cnam.dqanalyzer.importing.ImportPreview#ROWS} premières lignes telles que les
+     * paramètres donnés les donneraient (IMP-04). Rien n'est chargé ni enregistré : l'analyste peut
+     * demander autant d'aperçus qu'il veut en changeant de séparateur, de feuille ou de gabarit.
+     */
+    @GetMapping("/{sourceFileId}/preview")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
+    PreviewResponse preview(@PathVariable long sourceFileId, @ModelAttribute ImportCorrections corrections) {
+        var retained = ImportCorrector.correct(imports.settingsOf(sourceFileId), corrections);
+        return PreviewResponse.of(
+                retained, imports.sheetNamesOf(sourceFileId), imports.preview(sourceFileId, retained));
+    }
+
+    /** Lance le chargement d'un fichier déjà reçu, avec les paramètres que l'analyste a validés. */
+    @PostMapping("/{sourceFileId}/load")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
+    ResponseEntity<ImportStatusResponse> load(
+            @PathVariable long sourceFileId, @ModelAttribute ImportCorrections corrections) {
+        var retained = ImportCorrector.correct(imports.settingsOf(sourceFileId), corrections);
+        imports.startLoad(sourceFileId, retained);
+        return ResponseEntity.accepted()
+                .location(URI.create("/api/imports/" + sourceFileId))
+                .body(ImportStatusResponse.of(imports.progressOf(sourceFileId)));
     }
 
     @GetMapping("/{sourceFileId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST', 'READER')")
     ImportStatusResponse status(@PathVariable long sourceFileId) {
         return ImportStatusResponse.of(imports.progressOf(sourceFileId));
-    }
-
-    /** Les choix de l'analyste l'emportent sur la détection automatique (IMP-03). */
-    private static ImportSettings correct(
-            ImportSettings detected, String delimiter, String charset, Boolean hasHeader) {
-        var retained = detected;
-        if (delimiter != null && !delimiter.isBlank()) {
-            retained = retained.withDelimiter(Delimiters.toCharacter(delimiter));
-        }
-        if (charset != null && !charset.isBlank()) {
-            retained = retained.withCharsetName(charset);
-        }
-        if (hasHeader != null) {
-            retained = retained.withHasHeader(hasHeader);
-        }
-        return retained;
     }
 }
