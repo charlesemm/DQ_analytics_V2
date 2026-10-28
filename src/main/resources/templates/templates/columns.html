@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{templates.colonnes.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <h1 class="h3 mb-1" th:text="#{templates.colonnes.title}">Associer les colonnes</h1>
+  <p class="text-muted mb-1" th:text="${template.name()}">Modèle</p>
+  <p class="text-muted" th:text="#{templates.colonnes.intro}"></p>
+
+  <p class="text-muted" th:if="${loadedFiles.isEmpty()}" th:text="#{templates.colonnes.aucun-fichier}">
+    Aucun fichier chargé.</p>
+
+  <div th:unless="${loadedFiles.isEmpty()}">
+    <!-- Changer de fichier recharge la proposition d'association : c'est une simple lecture. -->
+    <form class="row g-2 align-items-end mb-4" method="get"
+          th:action="@{/modeles/{id}/colonnes(id=${template.id()})}">
+      <div class="col-md-8">
+        <label class="form-label" for="sourceFileId" th:text="#{templates.colonnes.fichier}">Fichier</label>
+        <select class="form-select" id="sourceFileId" name="sourceFileId">
+          <option th:each="f : ${loadedFiles}" th:value="${f.id()}" th:selected="${f.id() == sourceFileId}"
+                  th:text="${f.originalName()}"></option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-secondary w-100" type="submit"
+                th:text="#{templates.colonnes.changer}">Proposer l'association</button>
+      </div>
+    </form>
+
+    <p class="text-muted" th:if="${mapping.isEmpty()}" th:text="#{templates.colonnes.aucune-attendue}">
+      Ce modèle n'attend aucune colonne.</p>
+
+    <form method="post" th:unless="${mapping.isEmpty()}"
+          th:action="@{/modeles/{id}/colonnes(id=${template.id()})}">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+          <tr>
+            <th scope="col" th:text="#{templates.colonnes.attendue}">Colonne attendue</th>
+            <th scope="col" th:text="#{templates.colonnes.fichier.colonne}">Colonne du fichier</th>
+            <th scope="col" th:text="#{templates.colonnes.etat}">Reconnaissance</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:each="entry : ${mapping}">
+            <td class="font-monospace" th:text="${entry.key}">Date de naissance</td>
+            <td>
+              <select class="form-select form-select-sm" th:name="|colonne.${entry.key}|"
+                      th:disabled="${!canManageRules}">
+                <option value="" th:text="#{templates.colonnes.non-associee}">— non associée —</option>
+                <option th:each="c : ${fileColumns}" th:value="${c}" th:text="${c}"
+                        th:selected="${c == entry.value}"></option>
+              </select>
+            </td>
+            <td>
+              <span class="badge bg-success" th:if="${entry.value != null}"
+                    th:text="#{templates.colonnes.reconnue}">Reconnue</span>
+              <span class="badge bg-warning text-dark" th:if="${entry.value == null}"
+                    th:text="#{templates.colonnes.a-choisir}">À choisir</span>
+            </td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-primary" type="submit" th:if="${canManageRules}"
+              th:text="#{templates.colonnes.enregistrer}">Enregistrer l'association</button>
+      <a class="btn btn-link" th:href="@{/modeles}" th:text="#{rules.form.annuler}">Annuler</a>
+    </form>
+  </div>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

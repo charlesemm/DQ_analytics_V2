@@ -1,6 +1,18 @@
 # Production, serveur srv-gouv.ipscnam.ci : podman compose -f compose.prod.yaml up -d --build
 # Les secrets sont lus dans le fichier .env du dossier (non versionné, chmod 600).
-# Machine partagée avec d'autres applications (ÉCHO sur 80/443) : un seul port publié, le 8443.
+#
+# Machine partagée : le nginx de l'HÔTE occupe déjà 80 et 443 pour socle.ipscnam.ci et
+# echo.ipscnam.ci. C'est lui le portier, comme pour Socle et ÉCHO avant nous — et non plus
+# un nginx à nous sur le port 8443. DQ-Analyzer s'ajoute au vhost d'ÉCHO sous le chemin
+# « /dq/ », à la manière de socle.ipscnam.ci/referentiel/ :
+#
+#   navigateur ──https──▶ nginx de l'hôte (443, echo.ipscnam.ci)
+#                           ├── /        ──▶ 127.0.0.1:8000   ÉCHO
+#                           └── /dq/     ──▶ 127.0.0.1:8081   nous
+#
+# Conséquences, toutes visibles plus bas : plus de service « proxy », plus de certificats
+# dans ce dépôt (le TLS est terminé par l'hôte, avec le wildcard *.ipscnam.ci déjà en place),
+# et un seul port publié — sur la BOUCLE LOCALE seulement.
 name: dq-analyzer
 
 services:
@@ -30,7 +42,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Aucun "ports" : seul le proxy parle à l'application, par le réseau interne.
+    ports:
+      # « 127.0.0.1: » en tête n'est pas décoratif : sans ce préfixe, Podman publierait sur
+      # 0.0.0.0 et l'application serait offerte EN CLAIR à tout le réseau, court-circuitant
+      # le TLS de l'hôte — un témoin de session y circulerait sans chiffrement. Lié à la
+      # boucle locale, seul un processus de srv-gouv l'atteint, et nginx est le seul à le faire.
+      #
+      # 8081 à l'extérieur : 8000 appartient à ÉCHO. 8040 à l'intérieur : le port de Tomcat.
+      - "127.0.0.1:8081:8040"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DQ_DB_URL: jdbc:postgresql://postgres:5432/dqanalyzer
@@ -38,23 +57,15 @@ services:
       DQ_DB_PASSWORD: ${DQ_DB_PASSWORD:?à définir dans .env}
       DQ_MAIL_HOST: ${DQ_MAIL_HOST:-localhost}
       DQ_MAIL_PORT: ${DQ_MAIL_PORT:-25}
+      # Doit rester identique au chemin relayé par deploy/nginx/dq-dans-echo.conf.
+      # Changer l'un sans l'autre donne un 404 sur toutes les pages.
+      DQ_CONTEXT_PATH: ${DQ_CONTEXT_PATH:-/dq}
     volumes:
       - dq-storage:/data        # fichiers importés et bases DuckDB (PERF-03)
       - dq-logs:/app/logs       # journal applicatif (EXP-02)
 
-  proxy:
-    image: docker.io/library/nginx:1.27-alpine
-    container_name: dq-proxy
-    restart: always
-    depends_on:
-      - app
-    ports:
-      # 8443 et non 443 : les ports standard appartiennent à ÉCHO, interdit d'y toucher.
-      - "8443:8443"
-    volumes:
-      # ",Z" sans risque : ce sont nos propres copies, jamais les fichiers d'ÉCHO.
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
-      - ./deploy/certs:/etc/nginx/certs:ro,Z
+  # Le portier n'est pas ici : c'est le nginx de l'hôte, auquel on ajoute l'emplacement
+  # décrit par deploy/nginx/dq-dans-echo.conf. Voir l'en-tête de ce fichier.
 
 volumes:
   dq-pgdata:

@@ -68,4 +68,12 @@ public interface ImportService {
      * @throws ImportRejectedException si son chargement n'est pas terminé
      */
     ImportedTable tableOf(long sourceFileId);
+
+    /**
+     * Fichiers dont le chargement est terminé, du plus récent au plus ancien, pour les écrans qui
+     * font choisir un fichier (REG-03, MOD-02, lancement d'une analyse).
+     *
+     * @param limit nombre maximal de fichiers renvoyés
+     */
+    List<LoadedFile> loadedFiles(int limit);
 }

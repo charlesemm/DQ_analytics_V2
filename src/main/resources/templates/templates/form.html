@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{templates.form.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <h1 class="h3 mb-1"
+      th:text="${templateId} == null ? #{templates.form.title} : #{templates.form.title.modifier}">Nouveau modèle</h1>
+  <p class="text-muted" th:text="#{templates.form.intro}"></p>
+
+  <div class="alert alert-danger" role="alert" th:if="${error}" th:text="#{${error}}"></div>
+
+  <form method="post" th:action="${templateId} == null ? @{/modeles} : @{/modeles/{id}(id=${templateId})}">
+
+    <div class="card card-body shadow-sm mb-4">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="name" th:text="#{templates.form.nom}">Nom du modèle</label>
+          <input class="form-control" id="name" name="name" required maxlength="200" th:value="${form.name}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="description" th:text="#{templates.form.description}">Description</label>
+          <input class="form-control" id="description" name="description" th:value="${form.description}">
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="expectedColumns"
+                 th:text="#{templates.form.colonnes}">Colonnes attendues</label>
+          <textarea class="form-control font-monospace" id="expectedColumns" name="expectedColumns" rows="6"
+                    th:text="${form.expectedColumns}"></textarea>
+          <div class="form-text" th:text="#{templates.form.colonnes.aide}"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-body shadow-sm mb-4">
+      <h2 class="h6" th:text="#{templates.form.poids}">Poids des dimensions</h2>
+      <p class="text-muted small" th:text="#{templates.form.poids.aide}"></p>
+      <div class="row g-2">
+        <div class="col-6 col-md-3" th:each="d : ${dimensions}">
+          <label class="form-label small" th:for="'poids-' + ${d}" th:text="#{'dimension.' + ${d}}">Dimension</label>
+          <input class="form-control form-control-sm" type="number" min="0" max="10" step="1"
+                 th:id="'poids-' + ${d}" th:name="|weights[${d}]|"
+                 th:value="${form.weights.get(d.name()) != null} ? ${form.weights.get(d.name())} : 1">
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-body shadow-sm mb-4">
+      <h2 class="h6" th:text="#{templates.form.regles}">Règles du modèle</h2>
+      <p class="text-muted small" th:text="#{templates.form.regles.aide}"></p>
+      <p class="text-muted" th:if="${rules.isEmpty()}" th:text="#{templates.form.regles.aucune}"></p>
+      <div class="form-check" th:each="rule : ${rules}">
+        <input class="form-check-input" type="checkbox" name="ruleCodes" th:id="'regle-' + ${rule.ruleCode()}"
+               th:value="${rule.ruleCode()}" th:checked="${form.ruleCodes.contains(rule.ruleCode())}">
+        <label class="form-check-label" th:for="'regle-' + ${rule.ruleCode()}">
+          <span class="font-monospace small me-1" th:text="${rule.ruleCode()}">R-0001</span>
+          <span th:text="${rule.name()}">Nom</span>
+          <span class="badge text-bg-light ms-1" th:text="#{'dimension.' + ${rule.dimension()}}">Dimension</span>
+          <span class="text-muted small" th:text="' — ' + ${#strings.listJoin(rule.targetColumns(), ', ')}"></span>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit" th:text="#{templates.form.enregistrer}">Enregistrer</button>
+    <a class="btn btn-link" th:href="@{/modeles}" th:text="#{rules.form.annuler}">Annuler</a>
+  </form>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

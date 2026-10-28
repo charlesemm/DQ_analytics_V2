@@ -16,11 +16,13 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 @ControllerAdvice
 class NavigationAdvice {
 
-    private static final Set<String> IMPORT_ROLES = Set.of("ROLE_ADMIN", "ROLE_ANALYST");
+    private static final Set<String> WRITE_ROLES = Set.of("ROLE_ADMIN", "ROLE_ANALYST");
 
     @ModelAttribute
     void navigation(Model model) {
-        model.addAttribute("canImport", hasAnyRole(IMPORT_ROLES));
+        boolean canWrite = hasAnyRole(WRITE_ROLES);
+        model.addAttribute("canImport", canWrite);
+        model.addAttribute("canManageRules", canWrite);
     }
 
     private static boolean hasAnyRole(Set<String> roles) {

@@ -28,9 +28,12 @@ spring:
         concurrency-limit: 4
 
 server:
+  # Port d'écoute de Tomcat, le même partout (poste de développement et conteneur) pour que les
+  # adresses d'un environnement valent dans l'autre.
+  port: ${DQ_PORT:8040}
   # L'application est servie sous un sous-chemin du domaine d'ÉCHO : https://echo.ipscnam.ci/dq/
   # Le nginx de l'hôte relaie /dq/ tel quel, chemin compris ; Tomcat doit donc attendre ce préfixe.
-  # Il vaut aussi en développement (http://localhost:8080/dq/), pour que ce qui marche ici marche là-bas.
+  # Il vaut aussi en développement (http://localhost:8040/dq/), pour que ce qui marche ici marche là-bas.
   # Effet de bord utile : le témoin de session est posé sur /dq et ne croise jamais celui d'ÉCHO.
   servlet:
     context-path: ${DQ_CONTEXT_PATH:/dq}

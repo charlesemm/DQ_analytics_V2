@@ -64,22 +64,21 @@
     <h2 class="h6" th:text="#{profiling.suggestions}">Règles suggérées</h2>
     <p class="text-muted small" th:text="#{profiling.suggestions.aide}"></p>
     <p class="text-muted" th:if="${#lists.isEmpty(suggestions)}" th:text="#{profiling.suggestions.aucune}"></p>
-    <form th:unless="${#lists.isEmpty(suggestions)}">
-      <div class="form-check" th:each="suggestion, iter : ${suggestions}">
-        <input class="form-check-input" type="checkbox" name="suggestion"
-               th:id="'suggestion-' + ${iter.index}"
-               th:value="${suggestion.column()} + '|' + ${suggestion.ruleType()}">
-        <label class="form-check-label" th:for="'suggestion-' + ${iter.index}">
+    <ul class="list-unstyled mb-0" th:unless="${#lists.isEmpty(suggestions)}">
+      <li class="d-flex justify-content-between align-items-center border-bottom py-2"
+          th:each="suggestion : ${suggestions}">
+        <span>
           <span class="badge text-bg-light me-1" th:text="${suggestion.ruleType()}"></span>
           <span class="fw-semibold" th:text="${suggestion.column()}"></span>
           <span class="text-muted" th:text="' — ' + ${suggestion.reason()}"></span>
-        </label>
-      </div>
-      <!-- Le formulaire de règle n'existe pas encore (étape suivante) : le bouton dit pourquoi. -->
-      <button type="button" class="btn btn-primary mt-3" disabled
-              th:text="#{profiling.creer}">Créer les règles cochées</button>
-      <p class="text-muted small mt-2 mb-0" th:text="#{profiling.creer.indisponible}"></p>
-    </form>
+        </span>
+        <!-- La suggestion ouvre le formulaire prérempli : rien n'est créé à l'insu de l'analyste. -->
+        <a class="btn btn-outline-primary btn-sm" th:if="${canImport}"
+           th:href="@{/regles/nouvelle(type=${suggestion.ruleType()}, column=${suggestion.column()},
+                      sourceFileId=${sourceFileId})}"
+           th:text="#{profiling.creer}">Créer cette règle</a>
+      </li>
+    </ul>
   </section>
 </main>
 

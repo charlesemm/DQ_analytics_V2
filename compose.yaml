@@ -51,7 +51,10 @@ services:
       SPRING_MAIL_HOST: mailpit
       SPRING_MAIL_PORT: "1025"
     ports:
-      - "8080:8080"
+      # HÔTE:CONTENEUR. 8040 des deux côtés : Tomcat écoute ce port partout (server.port),
+      # donc http://localhost:8040/dq/ vaut aussi bien pour le conteneur que pour un lancement
+      # depuis IntelliJ. 8080 était déjà pris sur le poste.
+      - "8040:8040"
     volumes:
       - dq-storage:/data
 

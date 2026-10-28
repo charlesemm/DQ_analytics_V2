@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Champs des paramètres, construits à partir du paramSchema() de l'évaluateur (REG-02).
+     Un nouveau type de règle n'ajoute aucun HTML : il déclare ses Param, et ils apparaissent ici. -->
+<div th:fragment="params">
+  <div class="card card-body shadow-sm mb-4" th:if="${schema != null}">
+    <h2 class="h6" th:text="#{rules.form.parametres}">Ce que la règle contrôle</h2>
+
+    <!-- Colonnes ciblées : une, deux, ou autant que nécessaire (clé composée). -->
+    <div class="mb-3">
+      <label class="form-label" th:text="#{'rules.form.colonnes.' + ${schema.columns().name()}}">Colonne contrôlée</label>
+
+      <div th:if="${schema.columns().name() == 'ONE'}">
+        <div th:replace="~{rules/fragments/params :: column(0)}"></div>
+      </div>
+
+      <div class="row g-2" th:if="${schema.columns().name() == 'TWO'}">
+        <div class="col-md-6"><div th:replace="~{rules/fragments/params :: column(0)}"></div></div>
+        <div class="col-md-6"><div th:replace="~{rules/fragments/params :: column(1)}"></div></div>
+      </div>
+
+      <div th:if="${schema.columns().name() == 'MANY'}">
+        <div data-colonnes>
+          <div class="mb-2" th:each="index : ${#numbers.sequence(0, form.targetColumns.size() &gt; 1 ? form.targetColumns.size() - 1 : 1)}">
+            <div th:replace="~{rules/fragments/params :: column(${index})}"></div>
+          </div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-ajouter-colonne
+                th:text="#{rules.form.colonne.ajouter}">Ajouter une colonne
+        </button>
+      </div>
+
+      <div class="form-text" th:if="${fileColumns.isEmpty()}" th:text="#{rules.form.colonnes.aide}"></div>
+    </div>
+
+    <!-- Paramètres propres au type de règle. -->
+    <div class="row g-3">
+      <div th:each="p : ${schema.params()}"
+           th:class="${expressionParams.contains(p.name())} ? 'col-12' : 'col-md-6'">
+        <label class="form-label" th:for="'param-' + ${p.name()}"
+               th:text="#{${p.labelKey()}} + (${p.required()} ? ' *' : '')">Paramètre</label>
+
+        <!-- Condition (SI / ALORS) ou calcul attendu : éditeur par lignes. L'analyste ne saisit
+             jamais de SQL ni d'expression libre ; le JSON produit est revalidé côté serveur. -->
+        <div th:if="${expressionParams.contains(p.name())}" class="editeur-expression border rounded p-2"
+             th:attr="data-mode=${p.name() == 'expression'} ? 'calcul' : 'condition'">
+          <input type="hidden" th:id="'param-' + ${p.name()}"
+                 th:name="|params[${p.name()}]|"
+                 th:value="${form.params.get(p.name())}" data-valeur>
+          <div data-lignes></div>
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-ajouter-ligne
+                    th:text="#{rules.form.condition.ajouter}">Ajouter une ligne
+            </button>
+            <div class="btn-group btn-group-sm" role="group" th:if="${p.name() != 'expression'}">
+              <input type="radio" class="btn-check" th:name="|jointure-${p.name()}|"
+                     th:id="|jointure-all-${p.name()}|" value="all" checked data-jointure>
+              <label class="btn btn-outline-secondary" th:for="|jointure-all-${p.name()}|"
+                     th:text="#{rules.form.condition.et}">ET</label>
+              <input type="radio" class="btn-check" th:name="|jointure-${p.name()}|"
+                     th:id="|jointure-any-${p.name()}|" value="any" data-jointure>
+              <label class="btn btn-outline-secondary" th:for="|jointure-any-${p.name()}|"
+                     th:text="#{rules.form.condition.ou}">OU</label>
+            </div>
+          </div>
+          <div class="form-text" th:text="#{rules.form.condition.aide}"></div>
+        </div>
+
+        <!-- Table de référence : la liste des références chargées (EXA-01, INT-01). -->
+        <select th:if="${p.type().name() == 'REFERENCE_TABLE'}" class="form-select"
+                th:id="'param-' + ${p.name()}" th:name="|params[${p.name()}]|">
+          <option value="" th:text="#{rules.form.reference.choisir}">Choisir…</option>
+          <option th:each="r : ${referenceTables}" th:value="${r.id()}"
+                  th:selected="${form.params.get(p.name()) == r.id() + ''}"
+                  th:text="${r.name()} + ' (v' + ${r.version()} + ')'"></option>
+        </select>
+        <div class="form-text" th:if="${p.type().name() == 'REFERENCE_TABLE' and referenceTables.isEmpty()}"
+             th:text="#{rules.form.reference.aucune}"></div>
+
+        <!-- Colonne du fichier citée en paramètre. -->
+        <div th:if="${p.type().name() == 'COLUMN'}">
+          <select th:if="${!fileColumns.isEmpty()}" class="form-select" th:id="'param-' + ${p.name()}"
+                  th:name="|params[${p.name()}]|">
+            <option value=""></option>
+            <option th:each="c : ${fileColumns}" th:value="${c}"
+                    th:selected="${c == form.params.get(p.name())}" th:text="${c}"></option>
+          </select>
+          <input th:if="${fileColumns.isEmpty()}" class="form-control" th:id="'param-' + ${p.name()}"
+                 th:name="|params[${p.name()}]|" th:value="${form.params.get(p.name())}">
+        </div>
+
+        <!-- Vrai / faux. -->
+        <div class="form-check" th:if="${p.type().name() == 'BOOLEAN'}">
+          <input class="form-check-input" type="checkbox" value="true" th:id="'param-' + ${p.name()}"
+                 th:name="|params[${p.name()}]|"
+                 th:checked="${form.params.get(p.name()) == 'true'}">
+          <label class="form-check-label" th:for="'param-' + ${p.name()}"
+                 th:text="#{rules.form.oui}">Oui</label>
+        </div>
+
+        <!-- Nombres. -->
+        <input th:if="${p.type().name() == 'INTEGER' or p.type().name() == 'DECIMAL'}"
+               class="form-control" type="number"
+               th:step="${p.type().name() == 'INTEGER'} ? '1' : 'any'"
+               th:id="'param-' + ${p.name()}" th:name="|params[${p.name()}]|"
+               th:required="${p.required()}" th:value="${form.params.get(p.name())}">
+
+        <!-- Texte, et listes de valeurs saisies « a; b ». -->
+        <input th:if="${p.type().name() == 'TEXT' or p.type().name() == 'TEXT_LIST'}"
+               class="form-control" th:id="'param-' + ${p.name()}" th:name="|params[${p.name()}]|"
+               th:required="${p.required()}" th:value="${form.params.get(p.name())}">
+        <div class="form-text" th:if="${p.type().name() == 'TEXT_LIST'}"
+             th:text="#{rules.form.liste.aide}"></div>
+      </div>
+    </div>
+
+    <!-- Modèles clonés par rule-form.js : les libellés restent dans messages.properties. -->
+    <template data-modele-colonne>
+      <div class="mb-2"><div th:replace="~{rules/fragments/params :: column(-1)}"></div></div>
+    </template>
+    <template data-modele-ligne-calcul>
+      <div class="row g-2 align-items-end mb-2" data-ligne>
+        <div class="col-md-4">
+          <div th:replace="~{rules/fragments/params :: columnChoice}"></div>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select form-select-sm" data-operateur th:aria-label="#{rules.form.calcul.operateur}">
+            <option value="add" th:text="#{calcul.op.add}">plus</option>
+            <option value="sub" th:text="#{calcul.op.sub}">moins</option>
+            <option value="mul" th:text="#{calcul.op.mul}">multiplié par</option>
+            <option value="div" th:text="#{calcul.op.div}">divisé par</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <input class="form-control form-control-sm" data-valeur-ligne
+                 th:placeholder="#{rules.form.calcul.nombre}">
+        </div>
+        <div class="col-md-1">
+          <button class="btn btn-outline-danger btn-sm" type="button" data-supprimer-ligne
+                  th:title="#{rules.form.condition.supprimer}">&times;</button>
+        </div>
+      </div>
+    </template>
+    <template data-modele-ligne>
+      <div class="row g-2 align-items-end mb-2" data-ligne>
+        <div class="col-md-4">
+          <div th:replace="~{rules/fragments/params :: columnChoice}"></div>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select form-select-sm" data-operateur th:aria-label="#{rules.form.condition.operateur}">
+            <option th:each="o : ${operators}" th:value="${o}" th:text="#{'condition.op.' + ${o}}"></option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <input class="form-control form-control-sm" data-valeur-ligne
+                 th:placeholder="#{rules.form.condition.valeur}">
+        </div>
+        <div class="col-md-1">
+          <select class="form-select form-select-sm" data-type th:aria-label="#{rules.form.condition.type}">
+            <option th:each="v : ${valueTypes}" th:value="${v}" th:text="#{'condition.type.' + ${v}}"></option>
+          </select>
+        </div>
+        <div class="col-md-1">
+          <button class="btn btn-outline-danger btn-sm" type="button" data-supprimer-ligne
+                  th:title="#{rules.form.condition.supprimer}">&times;</button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <p class="text-muted" th:if="${schema == null}" th:text="#{rules.form.type.aide}">
+    Choisissez d'abord un type de contrôle.</p>
+</div>
+
+<!-- Une colonne ciblée : liste des colonnes du fichier si l'on en vient, saisie libre sinon.
+     index = -1 pour le modèle cloné, qui part toujours vide. -->
+<div th:fragment="column(index)">
+  <select th:if="${!fileColumns.isEmpty()}" class="form-select" name="targetColumns"
+          th:aria-label="#{rules.form.colonne}">
+    <option value=""></option>
+    <option th:each="c : ${fileColumns}" th:value="${c}" th:text="${c}"
+            th:selected="${index >= 0 and form.targetColumns.size() > index and c == form.targetColumns.get(index)}"></option>
+  </select>
+  <input th:if="${fileColumns.isEmpty()}" class="form-control" name="targetColumns"
+         th:aria-label="#{rules.form.colonne}"
+         th:value="${index >= 0 and form.targetColumns.size() > index} ? ${form.targetColumns.get(index)} : ''">
+</div>
+
+<!-- Choix d'une colonne dans une ligne de condition : sans nom, c'est le JSON qui la portera. -->
+<div th:fragment="columnChoice">
+  <select th:if="${!fileColumns.isEmpty()}" class="form-select form-select-sm" data-colonne
+          th:aria-label="#{rules.form.colonne}">
+    <option value=""></option>
+    <option th:each="c : ${fileColumns}" th:value="${c}" th:text="${c}"></option>
+  </select>
+  <input th:if="${fileColumns.isEmpty()}" class="form-control form-control-sm" data-colonne
+         th:placeholder="#{rules.form.colonne}">
+</div>
+
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.echange.rapport.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-3" th:text="#{rules.echange.rapport.title}">Résultat de l'import</h1>
+
+  <div class="alert alert-warning" role="alert" th:if="${error}" th:text="${error}"></div>
+
+  <div th:if="${report}">
+    <p th:text="#{rules.echange.rapport.total(${report.total()})}">Règles lues</p>
+
+    <section class="mb-3" th:unless="${report.created().isEmpty()}">
+      <h2 class="h6 text-success" th:text="#{rules.echange.rapport.creees(${report.created().size()})}">Créées</h2>
+      <ul class="small">
+        <li th:each="rule : ${report.created()}" th:text="${rule}"></li>
+      </ul>
+    </section>
+
+    <section class="mb-3" th:unless="${report.updated().isEmpty()}">
+      <h2 class="h6" th:text="#{rules.echange.rapport.modifiees(${report.updated().size()})}">Nouvelles versions</h2>
+      <p class="text-muted small" th:text="#{rules.echange.rapport.modifiees.aide}"></p>
+      <ul class="small">
+        <li th:each="rule : ${report.updated()}" th:text="${rule}"></li>
+      </ul>
+    </section>
+
+    <section class="mb-3" th:unless="${report.rejected().isEmpty()}">
+      <h2 class="h6 text-danger" th:text="#{rules.echange.rapport.refusees(${report.rejected().size()})}">Refusées</h2>
+      <p class="text-muted small" th:text="#{rules.echange.rapport.refusees.aide}"></p>
+      <ul class="small">
+        <li th:each="rejection : ${report.rejected()}"
+            th:text="${rejection.name()} + ' — ' + ${rejection.reason()}"></li>
+      </ul>
+    </section>
+  </div>
+
+  <a class="btn btn-link px-0" th:href="@{/regles}" th:text="#{rules.retour}">Retour aux règles</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

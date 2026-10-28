@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.echange.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{rules.echange.title}">Export et import des règles</h1>
+  <p class="text-muted" th:text="#{rules.echange.intro}"></p>
+
+  <section class="card card-body shadow-sm mb-4">
+    <h2 class="h6" th:text="#{rules.echange.export}">Exporter</h2>
+    <p class="text-muted small" th:text="#{rules.echange.export.aide(${ruleCount})}"></p>
+    <form class="row g-2 align-items-end" method="get" th:action="@{/regles/export}">
+      <div class="col-md-4">
+        <label class="form-label" for="dimension" th:text="#{rules.filtre.dimension}">Dimension</label>
+        <select class="form-select" id="dimension" name="dimension">
+          <option value="" th:text="#{rules.filtre.toutes}">Toutes</option>
+          <option th:each="d : ${dimensions}" th:value="${d}" th:text="#{'dimension.' + ${d}}"></option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="businessOwner" th:text="#{rules.filtre.proprietaire}">Propriétaire métier</label>
+        <select class="form-select" id="businessOwner" name="businessOwner">
+          <option value="" th:text="#{rules.filtre.tous}">Tous</option>
+          <option th:each="o : ${businessOwners}" th:value="${o}" th:text="${o}"></option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label" for="active" th:text="#{rules.filtre.statut}">Statut</label>
+        <select class="form-select" id="active" name="active">
+          <option value="" th:text="#{rules.filtre.toutes}">Toutes</option>
+          <option value="true" th:text="#{rules.statut.active}">Actives</option>
+          <option value="false" th:text="#{rules.statut.inactive}">Désactivées</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" type="submit" th:text="#{rules.echange.telecharger}">Télécharger</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card card-body shadow-sm mb-4" th:if="${canManageRules}">
+    <h2 class="h6" th:text="#{rules.echange.import}">Importer</h2>
+    <p class="text-muted small" th:text="#{rules.echange.import.aide}"></p>
+    <form class="row g-2 align-items-end" method="post" enctype="multipart/form-data"
+          th:action="@{/regles/import}">
+      <div class="col-md-8">
+        <label class="form-label" for="file" th:text="#{rules.echange.fichier}">Fichier JSON</label>
+        <input class="form-control" type="file" id="file" name="file" accept=".json,application/json" required>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-primary w-100" type="submit"
+                th:text="#{rules.echange.importer}">Importer les règles</button>
+      </div>
+    </form>
+  </section>
+
+  <a class="btn btn-link px-0" th:href="@{/regles}" th:text="#{rules.retour}">Retour aux règles</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

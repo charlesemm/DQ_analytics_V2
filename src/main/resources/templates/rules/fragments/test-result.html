@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Résultat d'un essai de règle (REG-03). Rien n'a été enregistré : ni la règle, ni les anomalies. -->
+<div>
+  <div class="alert alert-warning mb-0" role="alert" th:if="${error}" th:text="${error}"></div>
+
+  <div th:if="${result}">
+    <div class="row g-2 text-center mb-3">
+      <div class="col-6 col-md-3">
+        <div class="border rounded py-2">
+          <div class="h5 mb-0" th:text="${#numbers.formatInteger(result.fileRows(), 0, 'WHITESPACE')}">0</div>
+          <div class="small text-muted" th:text="#{rules.essai.lignes.fichier}">Lignes du fichier</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="border rounded py-2">
+          <div class="h5 mb-0" th:text="${#numbers.formatInteger(result.checkedRows(), 0, 'WHITESPACE')}">0</div>
+          <div class="small text-muted" th:text="#{rules.essai.lignes.controlees}">Lignes contrôlées</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="border rounded py-2">
+          <div class="h5 mb-0" th:text="${#numbers.formatInteger(result.conformingRows(), 0, 'WHITESPACE')}">0</div>
+          <div class="small text-muted" th:text="#{rules.essai.lignes.conformes}">Lignes conformes</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="border rounded py-2">
+          <div class="h5 mb-0" th:text="${#numbers.formatDecimal(result.scorePercent(), 1, 'WHITESPACE', 2, 'COMMA')} + ' %'">
+            100 %
+          </div>
+          <div class="small text-muted" th:text="#{rules.essai.score}">Taux de conformité</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-success mb-0" th:if="${result.anomalies().isEmpty()}" th:text="#{rules.essai.aucune}">
+      Aucune anomalie.</p>
+
+    <div th:unless="${result.anomalies().isEmpty()}">
+      <p class="mb-1" th:text="#{rules.essai.anomalies(${#numbers.formatInteger(result.anomalyRows(), 0, 'WHITESPACE')})}">
+        Anomalies</p>
+      <p class="text-muted small" th:if="${result.truncated()}"
+         th:text="#{rules.essai.tronque(${maxAnomalies})}"></p>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead>
+          <tr>
+            <th scope="col" th:text="#{rules.essai.ligne}">Ligne</th>
+            <th scope="col" th:text="#{rules.essai.colonne}">Colonne</th>
+            <th scope="col" th:text="#{rules.essai.valeur}">Valeur</th>
+            <th scope="col" th:text="#{rules.essai.message}">Message</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:each="anomaly : ${result.anomalies()}">
+            <td th:text="${anomaly.rowNum()}">2</td>
+            <td th:text="${anomaly.column()}">colonne</td>
+            <td th:text="${anomaly.value()}">valeur</td>
+            <td th:text="${anomaly.message()}">message</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
