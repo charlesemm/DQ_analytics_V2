@@ -31,7 +31,7 @@ publiques à la racine des autres modules, jamais leur `domain/` ni leur `infra/
 | 17 | Import de fichiers (CSV, Excel, ODS, Parquet, XML, JSON, largeur fixe, zip), envoi par morceaux de 10 Mo avec reprise, chargement DuckDB en flux | fait |
 | 18 | Profilage des colonnes + écran « Profil du fichier » avec suggestions de règles (PRF-01 à PRF-04) | fait |
 | 19 | Gestion des règles et des modèles | fait (REG-01 à REG-06, MOD-01 à MOD-03) |
-| 20 | Tables de référence | à faire |
+| 20 | Tables de référence | fait (REF-01 à REF-03) : module `reference`, versions non remplaçables, copie dans DuckDB |
 | 21 | Exécution des analyses | à faire |
 | 22 | Rapport, exports Excel et PDF | à faire |
 | 23 | Historique et comparaison | à faire |
@@ -39,7 +39,7 @@ publiques à la racine des autres modules, jamais leur `domain/` ni leur `infra/
 | 25 | Journal d'audit, purge 90 jours, LDAP | à faire |
 | 26 | Performance, recette, livrables | à faire |
 
-Branche courante : `feat/regles-modeles` (créée depuis `feat/profilage`). Branche principale : `main`.
+Branche courante : `feat/tables-reference` (créée depuis `feat/regles-modeles`). Branche principale : `main`.
 
 ## Accès local
 
@@ -69,6 +69,12 @@ Voir `docs/GUIDE_DEPLOIEMENT.md` et `docs/GUIDE_PROBLEMES_DEPLOIEMENT.md`.
 - `param` est un mot réservé de Thymeleaf : ne jamais nommer ainsi une variable de `th:each`.
 - Un objet de formulaire lu par Thymeleaf doit être `public` avec des accesseurs `public`
   (`RuleFormRequest`), sinon l'évaluation SpringEL échoue à l'exécution.
+- Pas de cycle entre modules : `reference` dépend de `rules`, donc `rules` ne doit jamais dépendre
+  de `reference`. Le contrat `rules/ReferenceSource` sert de point de rencontre, et la liste des
+  références du formulaire de règle reste une lecture SQL dans `RuleCatalogQueries` pour cette
+  raison (`ModularityTest` échouerait sinon).
+- `@Transactional` sur une méthode privée ou appelée depuis la même classe ne fait rien :
+  `ReferenceTableService` utilise `TransactionTemplate` pour que version et lignes soient tout ou rien.
 - Jackson 3 refuse une valeur absente pour un type primitif (`int`, `boolean`) : dans un contrat
   d'échange JSON écrit à la main (`RuleExchange.RuleExport`), utiliser des types boxés.
 - Les ITs partagent un seul conteneur PostgreSQL : garder la même combinaison d'annotations que
@@ -95,3 +101,9 @@ Voir `docs/GUIDE_DEPLOIEMENT.md` et `docs/GUIDE_PROBLEMES_DEPLOIEMENT.md`.
   colonnes attendues en colonnes du fichier, y compris dans les conditions et les calculs.
   Port basculé sur 8040. Prochaine étape : 20 (tables de référence, module `reference`) — à faire
   avant que EXA-01 et INT-01 soient réellement utilisables (`ReferenceProvider.NONE` aujourd'hui).
+- 2026-10-28 — Étape 20 terminée (1 commit, `verify` vert : 227 tests unitaires, 97 d'intégration) :
+  module `reference` (`ReferenceTableService` charge une version par le circuit d'import et la
+  recopie dans PostgreSQL ; `ReferenceLoader` la copie dans la base DuckDB de l'analyse en
+  `ref_<id>`), écran liste / historique / aperçu, et `ImportService.readAsTable` pour lire un
+  fichier sans en faire un fichier importé. EXA-01 et INT-01 sont désormais exécutables, y compris
+  depuis l'essai d'une règle (REG-03). Prochaine étape : 21 (exécution des analyses).
