@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{templates.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0" th:text="#{templates.title}">Modèles d'analyse</h1>
+    <a class="btn btn-primary" th:if="${canManageRules}" th:href="@{/modeles/nouveau}"
+       th:text="#{templates.action.nouveau}">Nouveau modèle</a>
+  </div>
+  <p class="text-muted" th:text="#{templates.intro}"></p>
+
+  <p class="text-muted" th:if="${templates.isEmpty()}" th:text="#{templates.aucun}">Aucun modèle.</p>
+
+  <div class="table-responsive" th:unless="${templates.isEmpty()}">
+    <table class="table table-sm align-middle">
+      <thead>
+      <tr>
+        <th scope="col" th:text="#{templates.colonne.nom}">Nom</th>
+        <th scope="col" th:text="#{templates.colonne.description}">Description</th>
+        <th scope="col" th:text="#{templates.colonne.colonnes}">Colonnes attendues</th>
+        <th scope="col" th:text="#{templates.colonne.regles}">Règles</th>
+        <th scope="col" th:text="#{templates.colonne.association}">Association</th>
+        <th scope="col" th:text="#{rules.colonne.actions}">Actions</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="template : ${templates}">
+        <td th:text="${template.name()}">Nom</td>
+        <td class="small text-muted" th:text="${template.description()}">Description</td>
+        <td th:text="${template.expectedColumnCount()}">0</td>
+        <td th:text="${template.ruleCount()}">0</td>
+        <td>
+          <span class="badge bg-success" th:if="${template.mapped()}"
+                th:text="#{templates.association.faite}">Enregistrée</span>
+          <span class="badge bg-secondary" th:unless="${template.mapped()}"
+                th:text="#{templates.association.absente}">À faire</span>
+        </td>
+        <td class="text-nowrap">
+          <a class="btn btn-link btn-sm px-1" th:if="${canManageRules}"
+             th:href="@{/modeles/{id}/modifier(id=${template.id()})}"
+             th:text="#{rules.action.modifier}">Modifier</a>
+          <a class="btn btn-link btn-sm px-1" th:href="@{/modeles/{id}/colonnes(id=${template.id()})}"
+             th:text="#{templates.action.colonnes}">Associer les colonnes</a>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>
