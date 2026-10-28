@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0" th:text="#{rules.title}">Règles de qualité</h1>
+  </div>
+
+  <form class="row g-2 align-items-end mb-4" method="get" th:action="@{/regles}">
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="dimension" th:text="#{rules.filtre.dimension}">Dimension</label>
+      <select class="form-select" id="dimension" name="dimension">
+        <option value="" th:text="#{rules.filtre.toutes}">Toutes</option>
+        <option th:each="d : ${dimensions}" th:value="${d}" th:text="#{'dimension.' + ${d}}"
+                th:selected="${filter.dimension() == d}"></option>
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="businessOwner" th:text="#{rules.filtre.proprietaire}">Propriétaire métier</label>
+      <select class="form-select" id="businessOwner" name="businessOwner">
+        <option value="" th:text="#{rules.filtre.tous}">Tous</option>
+        <option th:each="o : ${businessOwners}" th:value="${o}" th:text="${o}"
+                th:selected="${o == filter.businessOwner()}"></option>
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <label class="form-label" for="authorId" th:text="#{rules.filtre.auteur}">Auteur</label>
+      <select class="form-select" id="authorId" name="authorId">
+        <option value="" th:text="#{rules.filtre.tous}">Tous</option>
+        <option th:each="a : ${authors}" th:value="${a.id()}" th:text="${a.fullName()}"
+                th:selected="${filter.authorId() != null and filter.authorId() == a.id()}"></option>
+      </select>
+    </div>
+    <div class="col-sm-6 col-lg-2">
+      <label class="form-label" for="active" th:text="#{rules.filtre.statut}">Statut</label>
+      <select class="form-select" id="active" name="active">
+        <option value="" th:text="#{rules.filtre.toutes}">Toutes</option>
+        <option value="true" th:text="#{rules.statut.active}" th:selected="${filter.active() == true}"></option>
+        <option value="false" th:text="#{rules.statut.inactive}" th:selected="${filter.active() == false}"></option>
+      </select>
+    </div>
+    <div class="col-lg-1">
+      <button class="btn btn-primary w-100" type="submit" th:text="#{rules.filtre.appliquer}">Filtrer</button>
+    </div>
+  </form>
+
+  <p class="text-muted" th:if="${rules.isEmpty()}" th:text="#{rules.aucune}">Aucune règle.</p>
+
+  <div class="table-responsive" th:unless="${rules.isEmpty()}">
+    <table class="table table-sm align-middle">
+      <thead>
+      <tr>
+        <th scope="col" th:text="#{rules.colonne.code}">Code</th>
+        <th scope="col" th:text="#{rules.colonne.nom}">Nom</th>
+        <th scope="col" th:text="#{rules.colonne.type}">Type</th>
+        <th scope="col" th:text="#{rules.colonne.dimension}">Dimension</th>
+        <th scope="col" th:text="#{rules.colonne.colonnes}">Colonnes</th>
+        <th scope="col" th:text="#{rules.colonne.severite}">Sévérité</th>
+        <th scope="col" th:text="#{rules.colonne.proprietaire}">Propriétaire métier</th>
+        <th scope="col" th:text="#{rules.colonne.validation}">Validation</th>
+        <th scope="col" th:text="#{rules.colonne.statut}">Statut</th>
+        <th scope="col" th:text="#{rules.colonne.actions}">Actions</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="rule : ${rules}">
+        <td>
+          <span class="font-monospace" th:text="${rule.ruleCode()}">R-0001</span>
+          <span class="badge bg-secondary ms-1" th:text="#{rules.version(${rule.version()})}">v1</span>
+        </td>
+        <td th:text="${rule.name()}">Nom</td>
+        <td>
+          <span class="font-monospace small" th:text="${rule.type()}">CMP-01</span>
+          <div class="small text-muted" th:text="#{'rule.type.' + ${rule.type()}}"></div>
+        </td>
+        <td th:text="#{'dimension.' + ${rule.dimension()}}">Complétude</td>
+        <td class="small" th:text="${#strings.listJoin(rule.targetColumns(), ', ')}">colonne</td>
+        <td th:text="#{'severity.' + ${rule.severity()}}">Majeure</td>
+        <td th:text="${rule.businessOwner()}">Direction</td>
+        <td class="small">
+          <span th:if="${rule.validated()}"
+                th:text="#{rules.validee(${rule.validatedBy()}, ${#temporals.format(rule.validatedOn(), 'dd/MM/yyyy')})}"></span>
+          <span class="text-muted" th:unless="${rule.validated()}" th:text="#{rules.non-validee}">En attente</span>
+        </td>
+        <td>
+          <span class="badge bg-success" th:if="${rule.active()}" th:text="#{rules.statut.active}">Active</span>
+          <span class="badge bg-secondary" th:unless="${rule.active()}"
+                th:text="#{rules.statut.inactive}">Désactivée</span>
+        </td>
+        <td class="text-nowrap">
+          <a class="btn btn-link btn-sm px-1" th:href="@{/regles/{code}/historique(code=${rule.ruleCode()})}"
+             th:text="#{rules.action.historique}">Historique</a>
+          <form class="d-inline" method="post" th:if="${canManageRules}"
+                th:action="@{/regles/{code}/activation(code=${rule.ruleCode()})}">
+            <input type="hidden" name="active" th:value="${!rule.active()}">
+            <button class="btn btn-link btn-sm px-1" type="submit"
+                    th:text="${rule.active()} ? #{rules.action.desactiver} : #{rules.action.activer}">Désactiver
+            </button>
+          </form>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

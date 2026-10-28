@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-3" th:text="#{rules.title}">Règles de qualité</h1>
+  <div class="alert alert-warning" role="alert" th:text="${message}"></div>
+  <a class="btn btn-link px-0" th:href="@{/regles}" th:text="#{rules.retour}">Retour aux règles</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

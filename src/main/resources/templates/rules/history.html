@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.historique.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{rules.historique.title}">Historique des versions</h1>
+  <p class="text-muted font-monospace" th:text="${ruleCode}">R-0001</p>
+  <p th:text="#{rules.historique.intro}">Chaque modification crée une version.</p>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+      <tr>
+        <th scope="col" th:text="#{rules.colonne.version}">Version</th>
+        <th scope="col" th:text="#{rules.colonne.nom}">Nom</th>
+        <th scope="col" th:text="#{rules.colonne.colonnes}">Colonnes</th>
+        <th scope="col" th:text="#{rules.colonne.severite}">Sévérité</th>
+        <th scope="col" th:text="#{rules.colonne.auteur}">Auteur</th>
+        <th scope="col" th:text="#{rules.colonne.commentaire}">Motif de la modification</th>
+        <th scope="col" th:text="#{rules.colonne.validation}">Validation</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="version, stat : ${versions}">
+        <td>
+          <span th:text="${version.version()}">1</span>
+          <span class="badge bg-primary ms-1" th:if="${stat.first}"
+                th:text="#{rules.version.courante}">Courante</span>
+        </td>
+        <td th:text="${version.name()}">Nom</td>
+        <td class="small" th:text="${#strings.listJoin(version.targetColumns(), ', ')}">colonne</td>
+        <td th:text="#{'severity.' + ${version.severity()}}">Majeure</td>
+        <td th:text="${version.authorName()}">Analyste</td>
+        <td th:text="${version.changeComment()}">Motif</td>
+        <td class="small">
+          <span th:if="${version.validated()}"
+                th:text="#{rules.validee(${version.validatedBy()}, ${#temporals.format(version.validatedOn(), 'dd/MM/yyyy')})}"></span>
+          <span class="text-muted" th:unless="${version.validated()}" th:text="#{rules.non-validee}">En attente</span>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <a class="btn btn-link px-0" th:href="@{/regles}" th:text="#{rules.retour}">Retour aux règles</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>
