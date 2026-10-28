@@ -11,6 +11,8 @@ import ci.cnam.dqanalyzer.shared.duckdb.DuckDbDatabases;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -28,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestParam;
  */
 @Controller
 class ProfilePageController {
+
+    private static final Logger log = LoggerFactory.getLogger(ProfilePageController.class);
 
     private final ImportService imports;
     private final DuckDbDatabases databases;
@@ -79,6 +83,14 @@ class ProfilePageController {
         try (Connection connection = databases.open(table.database())) {
             return profiler.profile(new Dataset(connection, table.tableName(), columns));
         } catch (SQLException e) {
+            // L'écran dit « réessayez » (ERG-02) ; sans cette trace, personne ne saurait pourquoi.
+            // Le message porte sur la base et la table, jamais sur le contenu des cellules (SEC-06).
+            log.warn(
+                    "Profil impossible : base {}, table {}, colonnes {} — {}",
+                    table.database(),
+                    table.tableName(),
+                    columns.size(),
+                    e.getMessage());
             throw new ImportRejectedException("profiling.error.profil-impossible");
         }
     }
