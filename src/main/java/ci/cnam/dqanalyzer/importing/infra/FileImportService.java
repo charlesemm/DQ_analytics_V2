@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
@@ -54,6 +55,9 @@ class FileImportService implements ImportService {
 
     /** Les noms de table sont fabriqués ici, jamais déduits du nom du fichier. */
     private static final String TABLE_PREFIX = "ds_";
+
+    /** Table de la base jetable utilisee par readAsTable : une seule base, une seule table. */
+    private static final String ASIDE_TABLE = "ds_aside";
 
     private final SourceFileRepository sourceFiles;
     private final FileStorage storage;
@@ -280,6 +284,26 @@ class FileImportService implements ImportService {
                         file.getRowCount() == null ? 0 : file.getRowCount(),
                         file.getUploadedAt()))
                 .toList();
+    }
+
+    @Override
+    public <T> T readAsTable(InputStream content, String originalName, Function<ImportedTable, T> reader) {
+        validation.checkName(originalName);
+        var stored = storage.store(content, maxSizeBytes);
+        Path database = storage.temporaryDatabase();
+        try {
+            var format = validation.checkAcceptable(stored.path(), originalName);
+            if (format == ImportFormat.ZIP) {
+                throw new ImportRejectedException("import.error.archive-non-supportee");
+            }
+            var table = loader.load(stored.path(), detect(format, stored.path()), database, ASIDE_TABLE);
+            return reader.apply(table);
+        } finally {
+            // Ni le fichier reçu ni la base jetable n'ont de raison de survivre à la lecture (SEC-04).
+            storage.delete(stored.path());
+            storage.delete(database);
+            storage.delete(Path.of(database + ".wal"));
+        }
     }
 
     @Override

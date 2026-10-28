@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{reference.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-3" th:text="#{reference.title}">Tables de référence</h1>
+  <div class="alert alert-warning" role="alert" th:text="${message}"></div>
+  <a class="btn btn-link px-0" th:href="@{/references}" th:text="#{reference.retour}">Retour aux références</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

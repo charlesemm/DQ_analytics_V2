@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,11 +26,17 @@ public class RuleTester {
     private final ImportService imports;
     private final DuckDbDatabases databases;
     private final RuleEvaluatorRegistry registry;
+    private final ReferenceSource references;
 
-    public RuleTester(ImportService imports, DuckDbDatabases databases, RuleEvaluatorRegistry registry) {
+    public RuleTester(
+            ImportService imports,
+            DuckDbDatabases databases,
+            RuleEvaluatorRegistry registry,
+            ReferenceSource references) {
         this.imports = imports;
         this.databases = databases;
         this.registry = registry;
+        this.references = references;
     }
 
     /**
@@ -75,8 +82,10 @@ public class RuleTester {
         var collected = new ArrayList<Anomaly>();
         var sink = new CappedSink(collected);
         try (Connection connection = databases.open(table.database())) {
+            // Une regle de reference (EXA-01, INT-01) a besoin de son referentiel a cote du fichier.
+            var provider = references.loadInto(connection, referencedTables(rule));
             var result = evaluator.evaluate(
-                    new Dataset(connection, table.tableName(), table.columns()), rule, ReferenceProvider.NONE, sink);
+                    new Dataset(connection, table.tableName(), table.columns()), rule, provider, sink);
             return new RuleTestResult(
                     table.rowCount(),
                     result.checkedRows(),
@@ -86,6 +95,22 @@ public class RuleTester {
                     sink.exceeded);
         } catch (SQLException e) {
             throw new RuleEvaluationException("L'essai n'a pas pu être exécuté sur ce fichier : " + e.getMessage());
+        }
+    }
+
+    /**
+     * Versions de référence citées par la règle. Le paramètre {@code referenceTableId} est le seul
+     * moyen pour une règle de désigner un référentiel : il n'y en a jamais plus d'un par règle.
+     */
+    private static Set<Long> referencedTables(RuleDefinition rule) {
+        Object id = rule.params().get("referenceTableId");
+        if (id == null || id.toString().isBlank()) {
+            return Set.of();
+        }
+        try {
+            return Set.of((long) Double.parseDouble(id.toString()));
+        } catch (NumberFormatException e) {
+            throw new RuleEvaluationException("La table de référence indiquée n'est pas valide : " + id);
         }
     }
 

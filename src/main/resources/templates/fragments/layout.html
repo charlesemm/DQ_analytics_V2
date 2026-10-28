@@ -29,6 +29,9 @@
       <li class="nav-item">
         <a class="nav-link" th:href="@{/modeles}" th:text="#{nav.templates}">Modèles d'analyse</a>
       </li>
+      <li class="nav-item">
+        <a class="nav-link" th:href="@{/references}" th:text="#{nav.references}">Tables de référence</a>
+      </li>
     </ul>
     <form th:action="@{/logout}" method="post" class="d-flex">
       <button type="submit" class="btn btn-outline-light btn-sm" th:text="#{nav.logout}">Se déconnecter</button>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{reference.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <h1 class="h3 mb-1" th:text="#{reference.title}">Tables de référence</h1>
+  <p class="text-muted" th:text="#{reference.intro}"></p>
+
+  <p class="text-muted" th:if="${references.isEmpty()}" th:text="#{reference.aucune}">Aucune table.</p>
+
+  <div class="table-responsive" th:unless="${references.isEmpty()}">
+    <table class="table table-sm align-middle">
+      <thead>
+      <tr>
+        <th scope="col" th:text="#{reference.colonne.nom}">Nom</th>
+        <th scope="col" th:text="#{reference.colonne.version}">Version courante</th>
+        <th scope="col" th:text="#{reference.colonne.lignes}">Lignes</th>
+        <th scope="col" th:text="#{reference.colonne.colonnes}">Colonnes</th>
+        <th scope="col" th:text="#{reference.colonne.chargement}">Chargée le</th>
+        <th scope="col" th:text="#{reference.colonne.auteur}">Par</th>
+        <th scope="col" th:text="#{rules.colonne.actions}">Actions</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="reference : ${references}">
+        <td th:text="${reference.name()}">Communes</td>
+        <td th:text="#{reference.version(${reference.version()})}">v1</td>
+        <td th:text="${#numbers.formatInteger(reference.rowCount(), 0, 'WHITESPACE')}">0</td>
+        <td class="small text-muted" th:text="${#strings.listJoin(reference.columns(), ', ')}">code, nom</td>
+        <td th:text="${#temporals.format(reference.loadedAt(), 'dd/MM/yyyy HH:mm')}">01/01/2026</td>
+        <td th:text="${reference.loadedBy()}">Analyste</td>
+        <td class="text-nowrap">
+          <a class="btn btn-link btn-sm px-1" th:href="@{/references/versions/{id}(id=${reference.id()})}"
+             th:text="#{reference.action.apercu}">Aperçu</a>
+          <a class="btn btn-link btn-sm px-1" th:href="@{/references/{name}/versions(name=${reference.name()})}"
+             th:text="#{reference.action.versions}">Versions</a>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <section class="card card-body shadow-sm mt-4" th:if="${canManageRules}">
+    <h2 class="h6" th:text="#{reference.charger}">Charger une version</h2>
+    <p class="text-muted small" th:text="#{reference.charger.aide}"></p>
+    <form class="row g-2 align-items-end" method="post" enctype="multipart/form-data"
+          th:action="@{/references}">
+      <div class="col-md-5">
+        <label class="form-label" for="name" th:text="#{reference.form.nom}">Nom du référentiel</label>
+        <input class="form-control" id="name" name="name" required maxlength="200" list="references-connues">
+        <datalist id="references-connues">
+          <option th:each="r : ${references}" th:value="${r.name()}"></option>
+        </datalist>
+        <div class="form-text" th:text="#{reference.form.nom.aide}"></div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="file" th:text="#{reference.form.fichier}">Fichier</label>
+        <input class="form-control" type="file" id="file" name="file" required>
+      </div>
+      <div class="col-md-3">
+        <button class="btn btn-primary w-100" type="submit"
+                th:text="#{reference.form.charger}">Charger la version</button>
+      </div>
+    </form>
+  </section>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

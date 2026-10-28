@@ -120,7 +120,12 @@ public class RuleCatalogQueries {
 
     /**
      * Dernière version de chaque table de référence, pour le paramètre REFERENCE_TABLE du formulaire
-     * (EXA-01, INT-01). Lecture déplacée dans le module {@code reference} quand celui-ci existera.
+     * (EXA-01, INT-01).
+     *
+     * <p>Le module {@code reference} en est le propriétaire et offre la même lecture, mais l'appeler
+     * d'ici créerait un cycle entre modules : {@code reference} dépend déjà de {@code rules} pour
+     * {@link ReferenceSource}. Les écrans des règles se contentent donc de cette lecture, limitée au
+     * nom et à la version.
      */
     public List<ReferenceTableOption> referenceTables() {
         return jdbc.query(

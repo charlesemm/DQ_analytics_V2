@@ -2,6 +2,7 @@ package ci.cnam.dqanalyzer.importing;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Point d'entrée du module : recevoir un fichier, le montrer, puis le charger en tâche de fond.
@@ -76,4 +77,18 @@ public interface ImportService {
      * @param limit nombre maximal de fichiers renvoyés
      */
     List<LoadedFile> loadedFiles(int limit);
+
+    /**
+     * Lit un fichier dans une table DuckDB jetable et le confie au lecteur, sans l'enregistrer comme
+     * fichier importé : pour les modules qui ont besoin du contenu d'un fichier sans en faire une
+     * analyse, comme le chargement d'une table de référence (REF-01).
+     *
+     * <p>Le format, l'encodage et le séparateur sont détectés comme pour un import (IMP-07), et les
+     * mêmes refus s'appliquent (IMP-05). Le fichier reçu et la base jetable sont supprimés à la
+     * sortie, que le lecteur réussisse ou non : rien ne reste sur le disque.
+     *
+     * @param reader reçoit la table chargée ; il doit en avoir fini à son retour
+     * @throws ImportRejectedException si le fichier ne peut pas être lu
+     */
+    <T> T readAsTable(InputStream content, String originalName, Function<ImportedTable, T> reader);
 }
