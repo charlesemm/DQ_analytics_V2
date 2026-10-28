@@ -32,7 +32,7 @@ publiques à la racine des autres modules, jamais leur `domain/` ni leur `infra/
 | 18 | Profilage des colonnes + écran « Profil du fichier » avec suggestions de règles (PRF-01 à PRF-04) | fait |
 | 19 | Gestion des règles et des modèles | fait (REG-01 à REG-06, MOD-01 à MOD-03) |
 | 20 | Tables de référence | fait (REF-01 à REF-03) : module `reference`, versions non remplaçables, copie dans DuckDB |
-| 21 | Exécution des analyses | à faire |
+| 21 | Exécution des analyses | fait (EXE-01, EXE-02) : moteur asynchrone, scores, anomalies, écrans de lancement et de suivi |
 | 22 | Rapport, exports Excel et PDF | à faire |
 | 23 | Historique et comparaison | à faire |
 | 24 | Double authentification (TOTP + codes de secours) | à faire |
@@ -75,6 +75,10 @@ Voir `docs/GUIDE_DEPLOIEMENT.md` et `docs/GUIDE_PROBLEMES_DEPLOIEMENT.md`.
   raison (`ModularityTest` échouerait sinon).
 - `@Transactional` sur une méthode privée ou appelée depuis la même classe ne fait rien :
   `ReferenceTableService` utilise `TransactionTemplate` pour que version et lignes soient tout ou rien.
+- Le guide des lots prévoyait `DuckDbWorkspace` et `execution/domain/ColumnRemapper` : ni l'un ni
+  l'autre n'existent ici. Le moteur passe par `ImportService.tableOf` + `DuckDbDatabases`, et la
+  traduction des colonnes reste `TemplateRules.remap`, écrit à l'étape 19 — il couvre aussi les
+  colonnes citées dans les conditions, les calculs et `blockColumn`.
 - Jackson 3 refuse une valeur absente pour un type primitif (`int`, `boolean`) : dans un contrat
   d'échange JSON écrit à la main (`RuleExchange.RuleExport`), utiliser des types boxés.
 - Les ITs partagent un seul conteneur PostgreSQL : garder la même combinaison d'annotations que
@@ -107,3 +111,10 @@ Voir `docs/GUIDE_DEPLOIEMENT.md` et `docs/GUIDE_PROBLEMES_DEPLOIEMENT.md`.
   `ref_<id>`), écran liste / historique / aperçu, et `ImportService.readAsTable` pour lire un
   fichier sans en faire un fichier importé. EXA-01 et INT-01 sont désormais exécutables, y compris
   depuis l'essai d'une règle (REG-03). Prochaine étape : 21 (exécution des analyses).
+- 2026-10-28 — Étape 21 terminée (1 commit, `verify` vert : 231 tests unitaires, 107 d'intégration) :
+  `AnalysisService` + `AnalysisRunner` (asynchrone, scores par règle/dimension/global, anomalies
+  par paquets plafonnées, `run_reference` figée, échec sans résultat partiel), migration V6
+  (`anomalies_truncated`), événement `AnalysisCompleted` pour l'audit à venir, écrans « Lancer une
+  analyse » et « Suivi » (HTMX toutes les 2 s). `AnalysisRunnerIT` compare les scores au calcul
+  manuel : 91,67 / 90,91 / 83,33, global **90,03**, statut **KO**. Prochaine étape : 22 (rapport
+  écran, exports Excel et PDF) — le suivi affiche aujourd'hui statut et score global, rien de plus.
