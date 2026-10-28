@@ -7,8 +7,12 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h3 mb-0" th:text="#{rules.title}">Règles de qualité</h1>
-    <a class="btn btn-primary" th:if="${canManageRules}" th:href="@{/regles/nouvelle}"
-       th:text="#{rules.action.nouvelle}">Nouvelle règle</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" th:href="@{/regles/echange}"
+         th:text="#{rules.action.echange}">Export / import</a>
+      <a class="btn btn-primary" th:if="${canManageRules}" th:href="@{/regles/nouvelle}"
+         th:text="#{rules.action.nouvelle}">Nouvelle règle</a>
+    </div>
   </div>
 
   <form class="row g-2 align-items-end mb-4" method="get" th:action="@{/regles}">
