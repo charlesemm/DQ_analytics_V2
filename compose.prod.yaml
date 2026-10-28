@@ -48,8 +48,8 @@ services:
       # le TLS de l'hôte — un témoin de session y circulerait sans chiffrement. Lié à la
       # boucle locale, seul un processus de srv-gouv l'atteint, et nginx est le seul à le faire.
       #
-      # 8081 à l'extérieur : 8000 appartient à ÉCHO. 8080 à l'intérieur : le port de Tomcat.
-      - "127.0.0.1:8081:8080"
+      # 8081 à l'extérieur : 8000 appartient à ÉCHO. 8040 à l'intérieur : le port de Tomcat.
+      - "127.0.0.1:8081:8040"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DQ_DB_URL: jdbc:postgresql://postgres:5432/dqanalyzer
