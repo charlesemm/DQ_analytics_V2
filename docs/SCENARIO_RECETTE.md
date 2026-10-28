@@ -13,6 +13,59 @@ résultat attendu : un écart est un défaut à signaler, pas une interprétatio
 > **Numéros de ligne** : l'en-tête est la **ligne 1**, la première donnée la **ligne 2**, comme dans
 > Excel. C'est la convention de l'application dans tous les messages d'anomalie.
 
+## À lire avant de cliquer : comment l'application s'utilise
+
+Trois choses se préparent séparément, et se rejoignent au moment de l'analyse :
+
+```
+1. UN FICHIER            2. DES RÈGLES              3. UN MODÈLE
+   (les données)            (les contrôles)            (le lien entre les deux)
+
+   assures.csv              « sexe doit être M ou F »  « Fichiers d'assurés :
+   12 lignes                « matricule unique »         colonnes attendues
+   6 colonnes                                            + ces règles »
+        │                          │                            │
+        └──────────────────────────┴────────────────────────────┘
+                                   ▼
+                              UNE ANALYSE      ← pas encore livrée (étape 21)
+                          scores + anomalies
+```
+
+Pourquoi des règles **et** des modèles ? Une règle est écrite une fois et resservie : « matricule
+unique » vaut pour le fichier des assurés comme pour celui des employeurs. Le modèle dit seulement :
+*pour ce genre de fichier, applique ces règles-là, et voici comment ses colonnes s'appellent chez
+nous*.
+
+À quoi sert chaque écran :
+
+| Écran | Son rôle | Ce qu'il ne fait pas |
+|---|---|---|
+| **Importer un fichier** | Reçoit le fichier, devine séparateur et encodage, le charge | Il ne contrôle rien |
+| **Profil du fichier** | **Constate** ce que contiennent les colonnes (remplissage, valeurs distinctes, type probable) et **suggère** des règles | Ce n'est pas un contrôle : aucune anomalie n'est comptée |
+| **Règles de qualité** | Écrit les contrôles, un par type (23 types), et permet de les **essayer** sur un vrai fichier | Une règle essayée n'enregistre aucun résultat |
+| **Tables de référence** | Garde les listes officielles (communes, nomenclatures), versionnées | Elle ne contrôle rien seule : une règle doit la citer |
+| **Modèles d'analyse** | Réunit colonnes attendues + règles + poids, et associe les colonnes au fichier réel | Il ne lance pas d'analyse |
+
+**Pourquoi on a l'impression que rien n'aboutit** : c'est exact pour l'instant. Le bouton « Lancer
+l'analyse », les scores et le rapport arrivent aux étapes 21 et 22. Aujourd'hui, **« Essayer la
+règle » est le seul endroit qui affiche de vraies anomalies** — et c'est voulu par le CDC (REG-03) :
+l'analyste doit pouvoir tester une règle avant de l'embarquer dans un modèle.
+
+### Le parcours de 5 minutes, pour comprendre l'intérêt de l'ensemble
+
+À faire en premier, avant la recette détaillée ci-dessous. Connecté en `analyste`.
+
+1. **Importer un fichier** → `docs/recette/assures.csv` → charger
+2. **Tables de référence** → nom `Communes`, fichier `docs/recette/communes-v1.csv` → charger
+3. Recharger le **même nom** `Communes` avec `communes-v2.csv` → deux versions coexistent
+4. **Règles de qualité** → **Nouvelle règle** → type `INT-01`, colonne contrôlée `commune`,
+   référence `Communes (v2)`, colonne de la référence `code` → **Essayer la règle** sur `assures.csv`
+   → **5 anomalies**, lignes 3, 7, 10, 11, 13
+5. Remplacer la référence par `Communes (v1)` et réessayer → **1 anomalie**, ligne 8
+
+Ces deux derniers essais résument tout l'édifice : la même règle, deux versions du référentiel, deux
+verdicts — et chaque analyse saura laquelle elle a utilisée (REF-02, TRA-02).
+
 ## Les anomalies plantées dans `assures.csv`
 
 | Ligne | Contenu remarquable | Ce qui doit être détecté |
@@ -65,8 +118,9 @@ Ouvrir **http://localhost:8040/dq/**. Comptes de démonstration, mot de passe `A
 | 2.2 | Lire la ligne `sexe` | Remplissage **11 / 12** (une cellule vide, ligne 4) | PRF-01 |
 | 2.3 | Lire la ligne `matricule` | 11 valeurs distinctes pour 12 lignes — le doublon se voit déjà | PRF-01 |
 | 2.4 | Cliquer sur la ligne `commune` | Détail déplié sans rechargement de page : valeurs les plus fréquentes (`002` en tête) et motifs dominants | PRF-02, PRF-03 |
-| 2.5 | Lire les règles suggérées | Au moins : UNI-01 sur `matricule`, CMP-01 sur les colonnes toujours remplies, VAL-03 sur les longueurs constantes | PRF-04 |
-| 2.6 | Cliquer **Créer cette règle** sur la suggestion UNI-01 de `matricule` | Le formulaire s'ouvre **prérempli** : type UNI-01, colonne `matricule` | PRF-04, REG-01 |
+| 2.5 | Lire les règles suggérées | CMP-01 sur `matricule`, `nom`, `date_naissance`, `commune` (toujours remplies) ; VAL-03 sur `matricule` (8 caractères), `date_naissance` (10), `commune` (3) ; VAL-06 sur `date_naissance` ; VAL-01 sur `commune` et `salaire` | PRF-04 |
+| 2.6 | Vérifier qu'**aucune suggestion UNI-01 n'est proposée sur `matricule`** | Normal, et c'est le bon comportement : la colonne contient déjà un doublon (lignes 5 et 6), donc l'application ne la présente pas comme une clé unique. Elle suggère d'après ce qu'elle constate, elle ne devine pas l'intention | PRF-04 |
+| 2.7 | Cliquer **Créer cette règle** sur la suggestion VAL-03 de `matricule` | Le formulaire s'ouvre **prérempli** : type VAL-03, colonne `matricule` | PRF-04, REG-01 |
 
 ## 3. Tables de référence (REF-01 à REF-03)
 
@@ -111,7 +165,8 @@ Même parcours pour chacune. Le bouton **Essayer la règle** doit donner exactem
 
 > **Point de contrôle important (4.2.2)** : dans l'éditeur de condition du CMP-03, vérifier qu'on ne
 > peut **rien saisir librement** : la colonne, la comparaison et le type se choisissent dans des
-> listes. Aucune zone où écrire du SQL ou une formule (SEC-05).
+> listes. Aucune zone où écrire du SQL ou une formule : c'est ce qui rend l'injection impossible
+> (langage contrôlé du CDC §6, règle impérative de `docs/CLAUDE.md`).
 
 ### 4.3 Versions, liste et droits
 
@@ -183,7 +238,7 @@ retrouver la trace).
 |---|---|---|
 | 0. Préparation | 0.1 à 0.3 | |
 | 1. Import | 1.1 à 1.8 | |
-| 2. Profil | 2.1 à 2.6 | |
+| 2. Profil | 2.1 à 2.7 | |
 | 3. Références | 3.1 à 3.6 | |
 | 4. Règles | 4.1.1 à 4.3.8 | |
 | 5. Modèles | 5.1 à 5.6 | |

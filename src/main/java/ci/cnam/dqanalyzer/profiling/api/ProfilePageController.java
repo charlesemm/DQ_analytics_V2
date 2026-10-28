@@ -84,7 +84,7 @@ class ProfilePageController {
             return profiler.profile(new Dataset(connection, table.tableName(), columns));
         } catch (SQLException e) {
             // L'écran dit « réessayez » (ERG-02) ; sans cette trace, personne ne saurait pourquoi.
-            // Le message porte sur la base et la table, jamais sur le contenu des cellules (SEC-06).
+            // Le message porte sur la base et la table, jamais sur le contenu des cellules (SEC-05).
             log.warn(
                     "Profil impossible : base {}, table {}, colonnes {} — {}",
                     table.database(),
