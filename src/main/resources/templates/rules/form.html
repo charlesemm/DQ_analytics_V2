@@ -112,6 +112,30 @@
       </div>
     </div>
 
+    <!-- REG-03 : essayer la règle sur un vrai fichier, sans rien enregistrer. -->
+    <div class="card card-body shadow-sm mb-4" th:unless="${loadedFiles.isEmpty()}">
+      <h2 class="h6" th:text="#{rules.essai.title}">Essayer la règle</h2>
+      <p class="text-muted small" th:text="#{rules.essai.aide}"></p>
+      <div class="row g-2 align-items-end">
+        <div class="col-md-8">
+          <label class="form-label" for="testFileId" th:text="#{rules.essai.fichier}">Fichier</label>
+          <select class="form-select" id="testFileId" name="testFileId">
+            <option th:each="f : ${loadedFiles}" th:value="${f.id()}"
+                    th:selected="${sourceFileId != null and sourceFileId == f.id()}"
+                    th:text="${f.originalName()} + ' — ' + ${#numbers.formatInteger(f.rowCount(), 0, 'WHITESPACE')} + ' ' + #{rules.essai.lignes}"></option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <button class="btn btn-outline-primary w-100" type="button"
+                  hx-target="#resultat-essai" hx-include="#formulaire-regle"
+                  th:attr="hx-post=@{/regles/essai}"
+                  th:text="#{rules.essai.lancer}">Essayer
+          </button>
+        </div>
+      </div>
+      <div id="resultat-essai" class="mt-3"></div>
+    </div>
+
     <button class="btn btn-primary" type="submit" th:text="#{rules.form.enregistrer}">Enregistrer</button>
     <a class="btn btn-link" th:href="@{/regles}" th:text="#{rules.form.annuler}">Annuler</a>
   </form>

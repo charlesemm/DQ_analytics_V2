@@ -11,6 +11,7 @@ import ci.cnam.dqanalyzer.importing.ImportSettings;
 import ci.cnam.dqanalyzer.importing.ImportStatus;
 import ci.cnam.dqanalyzer.importing.ImportedTable;
 import ci.cnam.dqanalyzer.importing.JsonSettings;
+import ci.cnam.dqanalyzer.importing.LoadedFile;
 import ci.cnam.dqanalyzer.importing.ParquetSettings;
 import ci.cnam.dqanalyzer.importing.ReceivedFile;
 import ci.cnam.dqanalyzer.importing.SheetSettings;
@@ -32,8 +33,10 @@ import java.util.NoSuchElementException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
+import org.springframework.data.domain.Limit;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -265,6 +268,18 @@ class FileImportService implements ImportService {
                 sourceFile.getRowCount() == null ? 0 : sourceFile.getRowCount(),
                 sourceFile.getRaggedRowCount() == null ? 0 : sourceFile.getRaggedRowCount(),
                 sourceFile.getImportError() == null ? "" : sourceFile.getImportError());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LoadedFile> loadedFiles(int limit) {
+        return sourceFiles.findByImportStatusOrderByUploadedAtDesc(ImportStatus.DONE, Limit.of(limit)).stream()
+                .map(file -> new LoadedFile(
+                        file.getId(),
+                        file.getOriginalName(),
+                        file.getRowCount() == null ? 0 : file.getRowCount(),
+                        file.getUploadedAt()))
+                .toList();
     }
 
     @Override

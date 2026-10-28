@@ -8,10 +8,12 @@ import ci.cnam.dqanalyzer.rules.RuleDefinitionReader;
 import ci.cnam.dqanalyzer.rules.RuleEvaluationException;
 import ci.cnam.dqanalyzer.rules.RuleEvaluatorRegistry;
 import ci.cnam.dqanalyzer.rules.RuleFormValidator;
+import ci.cnam.dqanalyzer.rules.RuleTester;
 import ci.cnam.dqanalyzer.rules.Severity;
 import ci.cnam.dqanalyzer.rules.expression.Condition;
 import ci.cnam.dqanalyzer.security.CurrentUserProvider;
 import java.util.List;
+import java.util.NoSuchElementException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -34,6 +36,9 @@ import tools.jackson.databind.ObjectMapper;
 @Controller
 class RuleFormController {
 
+    /** Fichiers proposés pour un essai : les plus récents suffisent (REG-03). */
+    private static final int LOADED_FILES_SHOWN = 20;
+
     private final RuleEvaluatorRegistry registry;
     private final RuleCatalogService catalog;
     private final RuleCatalogQueries queries;
@@ -42,6 +47,7 @@ class RuleFormController {
     private final CurrentUserProvider currentUser;
     private final ImportService imports;
     private final ObjectMapper json;
+    private final RuleTester tester;
     private final RuleMessages errors;
 
     RuleFormController(
@@ -53,6 +59,7 @@ class RuleFormController {
             CurrentUserProvider currentUser,
             ImportService imports,
             ObjectMapper json,
+            RuleTester tester,
             RuleMessages errors) {
         this.registry = registry;
         this.catalog = catalog;
@@ -62,6 +69,7 @@ class RuleFormController {
         this.currentUser = currentUser;
         this.imports = imports;
         this.json = json;
+        this.tester = tester;
         this.errors = errors;
     }
 
@@ -110,6 +118,22 @@ class RuleFormController {
         addSchema(model, type);
         addChoices(model, sourceFileId);
         return "rules/fragments/params";
+    }
+
+    /**
+     * Essai de la règle en cours de saisie sur un fichier déjà importé (REG-03), appelé par HTMX :
+     * rien n'est enregistré, et seules les 50 premières anomalies sont montrées.
+     */
+    @PostMapping("/regles/essai")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ANALYST')")
+    String test(@ModelAttribute("form") RuleFormRequest request, @RequestParam long testFileId, Model model) {
+        try {
+            model.addAttribute("result", tester.test(request.toRuleForm(json), testFileId));
+        } catch (InvalidRuleFormException | RuleEvaluationException | NoSuchElementException e) {
+            model.addAttribute("error", errors.message(e));
+        }
+        model.addAttribute("maxAnomalies", RuleTester.MAX_ANOMALIES);
+        return "rules/fragments/test-result";
     }
 
     @PostMapping("/regles")
@@ -195,6 +219,7 @@ class RuleFormController {
         model.addAttribute("referenceTables", queries.referenceTables());
         model.addAttribute("sourceFileId", sourceFileId);
         model.addAttribute("fileColumns", fileColumns(sourceFileId));
+        model.addAttribute("loadedFiles", imports.loadedFiles(LOADED_FILES_SHOWN));
     }
 
     /**
