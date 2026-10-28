@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{execution.nouvelle.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <h1 class="h3 mb-1" th:text="#{execution.nouvelle.title}">Lancer une analyse</h1>
+  <p class="text-muted" th:text="#{execution.nouvelle.intro}"></p>
+
+  <p class="alert alert-warning" th:if="${loadedFiles.isEmpty()}" th:text="#{execution.aucun-fichier}">
+    Aucun fichier chargé.</p>
+  <p class="alert alert-warning" th:if="${templates.isEmpty()}" th:text="#{execution.aucun-modele}">
+    Aucun modèle.</p>
+
+  <div th:unless="${loadedFiles.isEmpty() or templates.isEmpty()}">
+    <!-- Changer de modèle recharge la page pour montrer son association de colonnes : simple lecture. -->
+    <form class="row g-2 align-items-end mb-3" method="get" th:action="@{/analyses/nouvelle}">
+      <div class="col-md-5">
+        <label class="form-label" for="sourceFileId" th:text="#{execution.fichier}">Fichier à analyser</label>
+        <select class="form-select" id="sourceFileId" name="sourceFileId">
+          <option th:each="f : ${loadedFiles}" th:value="${f.id()}" th:selected="${f.id() == sourceFileId}"
+                  th:text="${f.originalName()} + ' — ' + ${#numbers.formatInteger(f.rowCount(), 0, 'WHITESPACE')} + ' ' + #{execution.lignes}"></option>
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label" for="templateId" th:text="#{execution.modele}">Modèle d'analyse</label>
+        <select class="form-select" id="templateId" name="templateId">
+          <option value="" th:text="#{execution.modele.choisir}">Choisir un modèle…</option>
+          <option th:each="t : ${templates}" th:value="${t.id()}"
+                  th:selected="${templateId != null and templateId == t.id()}"
+                  th:text="${t.name()} + ' — ' + ${t.ruleCount()} + ' ' + #{execution.regles}"></option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-secondary w-100" type="submit"
+                th:text="#{execution.verifier}">Vérifier</button>
+      </div>
+    </form>
+
+    <section class="card card-body shadow-sm mb-4" th:if="${templateId != null}">
+      <h2 class="h6" th:text="#{execution.association}">Association des colonnes du modèle</h2>
+      <p class="text-muted small" th:if="${mapping.isEmpty()}" th:text="#{execution.association.absente}"></p>
+      <ul class="list-inline mb-0 small" th:unless="${mapping.isEmpty()}">
+        <li class="list-inline-item me-3" th:each="entry : ${mapping}">
+          <span class="font-monospace" th:text="${entry.key}">Colonne attendue</span>
+          <span>→</span>
+          <span class="font-monospace text-success" th:text="${entry.value}">colonne du fichier</span>
+        </li>
+      </ul>
+    </section>
+
+    <form method="post" th:action="@{/analyses}" th:if="${templateId != null}">
+      <input type="hidden" name="sourceFileId" th:value="${sourceFileId}">
+      <input type="hidden" name="templateId" th:value="${templateId}">
+      <button class="btn btn-primary" type="submit" th:text="#{execution.lancer}">Lancer l'analyse</button>
+      <a class="btn btn-link" th:href="@{/modeles}" th:text="#{execution.retour-modeles}">Voir les modèles</a>
+    </form>
+  </div>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

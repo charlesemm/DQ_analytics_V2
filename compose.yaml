@@ -45,7 +45,7 @@ services:
     restart: on-failure
     environment:
       SPRING_PROFILES_ACTIVE: dev
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dqanalyzer
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dqanalyzer?reWriteBatchedInserts=true
       SPRING_DATASOURCE_USERNAME: dqanalyzer
       SPRING_DATASOURCE_PASSWORD: ${DQ_DB_PASSWORD:-dqanalyzer_dev}
       SPRING_MAIL_HOST: mailpit

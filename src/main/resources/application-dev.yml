@@ -5,7 +5,7 @@ spring:
     # Voir le commentaire de "ports" dans compose.yaml. Dans le conteneur, compose.yaml
     # impose SPRING_DATASOURCE_URL avec le port interne 5432 : cette ligne ne vaut que
     # pour un lancement depuis l'éditeur (./mvnw spring-boot:run).
-    url: jdbc:postgresql://localhost:5435/dqanalyzer
+    url: jdbc:postgresql://localhost:5435/dqanalyzer?reWriteBatchedInserts=true
     username: dqanalyzer
     password: dqanalyzer_dev
   flyway:

@@ -4,6 +4,7 @@ import ci.cnam.dqanalyzer.rules.RuleDefinition;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Adapte les règles d'un modèle au fichier analysé (MOD-03) : les règles désignent les colonnes
@@ -14,6 +15,13 @@ import java.util.Map;
  * règles enregistrées ne sont pas modifiées.
  */
 public final class TemplateRules {
+
+    /**
+     * Clés des paramètres qui portent un nom de colonne : la colonne comparée dans une condition
+     * (CMP-03, COH-02), un opérande de calcul (COH-03) et la colonne de regroupement des doublons
+     * approchés (UNI-04).
+     */
+    private static final Set<String> COLUMN_KEYS = Set.of("column", "blockColumn");
 
     private TemplateRules() {}
 
@@ -59,7 +67,11 @@ public final class TemplateRules {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> remapParams(Map<String, Object> params, Map<String, String> mapping) {
         var result = new LinkedHashMap<String, Object>();
-        params.forEach((name, value) -> result.put(name, remapValue(name, value, mapping)));
+        params.forEach((name, value) -> result.put(
+                name,
+                COLUMN_KEYS.contains(name) && value != null
+                        ? mapping.getOrDefault(value.toString(), value.toString())
+                        : remapValue(name, value, mapping)));
         return result;
     }
 
@@ -70,7 +82,7 @@ public final class TemplateRules {
             ((Map<String, Object>) map)
                     .forEach((key, nested) -> result.put(
                             key,
-                            "column".equals(key) && nested != null
+                            COLUMN_KEYS.contains(key) && nested != null
                                     ? mapping.getOrDefault(nested.toString(), nested.toString())
                                     : remapValue(key, nested, mapping)));
             return result;

@@ -25,7 +25,7 @@ spring:
       simple:
         # Imports et analyses tournent en @Async sur threads virtuels. La limite borne le nombre de
         # traitements simultanés : le disque doit tenir 3 × la taille max par traitement (PERF-03).
-        concurrency-limit: 4
+        concurrency-limit: 2
 
 server:
   # Port d'écoute de Tomcat, le même partout (poste de développement et conteneur) pour que les
@@ -64,5 +64,9 @@ dq:
   upload:
     max-file-size: 2GB                   # PERF-02, paramétrable
     chunk-size: 10MB
+  analysis:
+    # Au-delà, les anomalies d'une même règle sont comptées mais plus enregistrées : le score reste
+    # exact (il vient des comptages), et une règle mal paramétrée ne remplit pas la base (PERF-03).
+    max-anomalies-per-rule: 1000000
   retention:
     days: 90                             # SEC-04

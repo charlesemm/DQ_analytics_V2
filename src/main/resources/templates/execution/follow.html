@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{execution.suivi.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{execution.suivi.title}">Analyse en cours</h1>
+  <p class="text-muted" th:text="#{execution.suivi.numero(${runId})}">Analyse n° 1</p>
+
+  <!-- Le fragment se recharge tout seul toutes les 2 s, et cesse de le faire à la fin. -->
+  <div id="progression">
+    <div th:replace="~{execution/fragments/progress :: progress}"></div>
+  </div>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>
