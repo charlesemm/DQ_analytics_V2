@@ -120,16 +120,17 @@ class ProfilePageControllerIT {
 
     @Test
     @WithMockUser(roles = "ANALYST")
-    void montre_les_regles_suggerees_et_un_bouton_de_creation_desactive() throws Exception {
+    void montre_les_regles_suggerees_et_un_lien_vers_le_formulaire_prerempli() throws Exception {
         mvc.perform(get("/fichiers/{id}/profil", chargeId))
                 .andExpect(status().isOk())
                 // Matricule : 3 valeurs toutes différentes et toujours renseignées, sur 8 caractères.
                 .andExpect(content().string(containsString("UNI-01")))
                 .andExpect(content().string(containsString("CMP-01")))
                 .andExpect(content().string(containsString("VAL-03")))
-                // Le formulaire de règle n'existe pas encore : le bouton reste inactif et le dit.
-                .andExpect(content().string(containsString("disabled")))
-                .andExpect(content().string(containsString("pas encore en service")));
+                // Chaque suggestion ouvre le formulaire de règle prérempli (PRF-04 vers REG-01).
+                .andExpect(content().string(containsString("/regles/nouvelle")))
+                .andExpect(content().string(containsString("type=UNI-01")))
+                .andExpect(content().string(containsString("column=matricule")));
     }
 
     @Test
@@ -174,8 +175,8 @@ class ProfilePageControllerIT {
     void un_lecteur_consulte_le_profil_sans_pouvoir_rien_modifier() throws Exception {
         mvc.perform(get("/fichiers/{id}/profil", chargeId))
                 .andExpect(status().isOk())
-                // Les deux écrans de profil n'écrivent rien : le bouton de création reste inactif.
-                .andExpect(content().string(containsString("disabled")))
+                // Un lecteur ne crée pas de règle : le lien de création ne lui est pas proposé.
+                .andExpect(content().string(not(containsString("/regles/nouvelle"))))
                 .andExpect(content().string(not(containsString("/imports/nouveau"))));
     }
 

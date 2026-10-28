@@ -7,6 +7,8 @@
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h3 mb-0" th:text="#{rules.title}">Règles de qualité</h1>
+    <a class="btn btn-primary" th:if="${canManageRules}" th:href="@{/regles/nouvelle}"
+       th:text="#{rules.action.nouvelle}">Nouvelle règle</a>
   </div>
 
   <form class="row g-2 align-items-end mb-4" method="get" th:action="@{/regles}">
@@ -91,6 +93,12 @@
                 th:text="#{rules.statut.inactive}">Désactivée</span>
         </td>
         <td class="text-nowrap">
+          <a class="btn btn-link btn-sm px-1" th:if="${canManageRules}"
+             th:href="@{/regles/{code}/modifier(code=${rule.ruleCode()})}"
+             th:text="#{rules.action.modifier}">Modifier</a>
+          <a class="btn btn-link btn-sm px-1" th:if="${canManageRules}"
+             th:href="@{/regles/{code}/dupliquer(code=${rule.ruleCode()})}"
+             th:text="#{rules.action.dupliquer}">Dupliquer</a>
           <a class="btn btn-link btn-sm px-1" th:href="@{/regles/{code}/historique(code=${rule.ruleCode()})}"
              th:text="#{rules.action.historique}">Historique</a>
           <form class="d-inline" method="post" th:if="${canManageRules}"

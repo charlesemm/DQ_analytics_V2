@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{rules.form.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+
+  <h1 class="h3 mb-1" th:text="${ruleCode} == null ? #{rules.form.title} : #{rules.form.title.modifier(${ruleCode})}">
+    Nouvelle règle</h1>
+  <p class="text-muted" th:text="#{rules.form.intro}"></p>
+
+  <div class="alert alert-danger" role="alert" th:if="${error}" th:text="${error}"></div>
+
+  <form method="post" id="formulaire-regle"
+        th:action="${ruleCode} == null ? @{/regles} : @{/regles/{code}(code=${ruleCode})}">
+    <input type="hidden" name="sourceFileId" th:if="${sourceFileId}" th:value="${sourceFileId}">
+
+    <!-- Le type de contrôle commande les champs de paramètres : HTMX les recharge à chaque changement. -->
+    <div class="card card-body shadow-sm mb-4">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="type" th:text="#{rules.form.type}">Type de contrôle</label>
+          <select class="form-select" id="type" name="type" required
+                  hx-target="#parametres" hx-include="#type"
+                  th:attr="hx-get=@{/regles/formulaire/parametres},
+                           hx-vals=${sourceFileId} != null ? '{&quot;sourceFileId&quot;: ' + ${sourceFileId} + '}' : null">
+            <option value="" th:text="#{rules.form.type.choisir}">Choisir…</option>
+            <option th:each="t : ${types}" th:value="${t}" th:selected="${t == form.type}"
+                    th:text="${t} + ' — ' + #{'rule.type.' + ${t}}"></option>
+          </select>
+        </div>
+        <div class="col-md-6" th:if="${dimension}">
+          <label class="form-label" th:text="#{rules.form.dimension}">Dimension</label>
+          <p class="form-control-plaintext" th:text="#{'dimension.' + ${dimension}}">Complétude</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="parametres">
+      <div th:replace="~{rules/fragments/params :: params}"></div>
+    </div>
+
+    <div class="card card-body shadow-sm mb-4">
+      <h2 class="h6" th:text="#{rules.form.identite}">Identité de la règle</h2>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="name" th:text="#{rules.form.nom}">Nom</label>
+          <input class="form-control" id="name" name="name" required maxlength="200" th:value="${form.name}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="businessOwner" th:text="#{rules.form.proprietaire}">Propriétaire métier</label>
+          <input class="form-control" id="businessOwner" name="businessOwner" maxlength="200" list="proprietaires"
+                 th:value="${form.businessOwner}">
+          <datalist id="proprietaires">
+            <option th:each="o : ${businessOwners}" th:value="${o}"></option>
+          </datalist>
+          <div class="form-text" th:text="#{rules.form.proprietaire.aide}"></div>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="description" th:text="#{rules.form.description}">Description</label>
+          <textarea class="form-control" id="description" name="description" rows="2"
+                    th:text="${form.description}"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-body shadow-sm mb-4">
+      <h2 class="h6" th:text="#{rules.form.controle}">Sévérité, seuil et message</h2>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="severity" th:text="#{rules.form.severite}">Sévérité</label>
+          <select class="form-select" id="severity" name="severity">
+            <option th:each="s : ${severities}" th:value="${s}" th:selected="${s == form.severity}"
+                    th:text="#{'severity.' + ${s}}"></option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="thresholdPercent" th:text="#{rules.form.seuil}">Seuil d'acceptation</label>
+          <input class="form-control" id="thresholdPercent" name="thresholdPercent" type="number"
+                 min="0" max="100" step="0.01" th:value="${form.thresholdPercent}">
+          <div class="form-text" th:text="#{rules.form.seuil.aide}"></div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" th:text="#{rules.form.normalisation}">Normalisation avant contrôle</label>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="trim" name="trim" value="true"
+                   th:checked="${form.trim}">
+            <label class="form-check-label" for="trim" th:text="#{rules.form.trim}">Ignorer les espaces</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="upperCase" name="upperCase" value="true"
+                   th:checked="${form.upperCase}">
+            <label class="form-check-label" for="upperCase" th:text="#{rules.form.majuscules}">Ignorer la casse</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="stripAccents" name="stripAccents" value="true"
+                   th:checked="${form.stripAccents}">
+            <label class="form-check-label" for="stripAccents" th:text="#{rules.form.accents}">Ignorer les accents</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="message" th:text="#{rules.form.message}">Message d'anomalie</label>
+          <input class="form-control" id="message" name="message" maxlength="500" th:value="${form.message}">
+          <div class="form-text" th:text="#{rules.form.message.aide}"></div>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="changeComment" th:text="#{rules.form.commentaire}">Motif de la modification</label>
+          <input class="form-control" id="changeComment" name="changeComment" maxlength="500"
+                 th:required="${ruleCode != null}" th:value="${form.changeComment}">
+          <div class="form-text" th:text="#{rules.form.commentaire.aide}"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit" th:text="#{rules.form.enregistrer}">Enregistrer</button>
+    <a class="btn btn-link" th:href="@{/regles}" th:text="#{rules.form.annuler}">Annuler</a>
+  </form>
+
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+<script type="module" th:src="@{/js/rule-form.js}"></script>
+</body>
+</html>

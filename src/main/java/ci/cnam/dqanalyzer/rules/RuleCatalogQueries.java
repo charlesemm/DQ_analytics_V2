@@ -118,6 +118,22 @@ public class RuleCatalogQueries {
 
     public record Author(long id, String fullName) {}
 
+    /**
+     * Dernière version de chaque table de référence, pour le paramètre REFERENCE_TABLE du formulaire
+     * (EXA-01, INT-01). Lecture déplacée dans le module {@code reference} quand celui-ci existera.
+     */
+    public List<ReferenceTableOption> referenceTables() {
+        return jdbc.query(
+                """
+                SELECT r.id, r.name, r.version FROM reference_table r
+                WHERE r.version = (SELECT max(v.version) FROM reference_table v WHERE v.name = r.name)
+                ORDER BY r.name
+                """,
+                (rs, i) -> new ReferenceTableOption(rs.getLong(1), rs.getString(2), rs.getInt(3)));
+    }
+
+    public record ReferenceTableOption(long id, String name, int version) {}
+
     private static String name(Dimension dimension) {
         return dimension == null ? null : dimension.name();
     }
