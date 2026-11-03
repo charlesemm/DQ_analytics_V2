@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head(#{reference.versions.title})}"></head>
+<body>
+<nav th:replace="~{fragments/layout :: navbar}"></nav>
+<main class="container">
+  <h1 class="h3 mb-1" th:text="#{reference.versions.title}">Versions du référentiel</h1>
+  <p class="text-muted" th:text="${name}">Communes</p>
+  <p th:text="#{reference.versions.intro}">Une nouvelle version ne remplace jamais la précédente.</p>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+      <tr>
+        <th scope="col" th:text="#{reference.colonne.version}">Version</th>
+        <th scope="col" th:text="#{reference.colonne.lignes}">Lignes</th>
+        <th scope="col" th:text="#{reference.colonne.colonnes}">Colonnes</th>
+        <th scope="col" th:text="#{reference.colonne.chargement}">Chargée le</th>
+        <th scope="col" th:text="#{reference.colonne.auteur}">Par</th>
+        <th scope="col" th:text="#{rules.colonne.actions}">Actions</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="version, stat : ${versions}">
+        <td>
+          <span th:text="#{reference.version(${version.version()})}">v1</span>
+          <span class="badge bg-primary ms-1" th:if="${stat.first}"
+                th:text="#{reference.version.courante}">Courante</span>
+        </td>
+        <td th:text="${#numbers.formatInteger(version.rowCount(), 0, 'WHITESPACE')}">0</td>
+        <td class="small text-muted" th:text="${#strings.listJoin(version.columns(), ', ')}">code, nom</td>
+        <td th:text="${#temporals.format(version.loadedAt(), 'dd/MM/yyyy HH:mm')}">01/01/2026</td>
+        <td th:text="${version.loadedBy()}">Analyste</td>
+        <td>
+          <a class="btn btn-link btn-sm px-1" th:href="@{/references/versions/{id}(id=${version.id()})}"
+             th:text="#{reference.action.apercu}">Aperçu</a>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <a class="btn btn-link px-0" th:href="@{/references}" th:text="#{reference.retour}">Retour aux références</a>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

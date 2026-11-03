@@ -187,6 +187,11 @@ class FileStorage {
         return directory(databases).resolve(sourceFileId + ".duckdb");
     }
 
+    /** Base DuckDB jetable : pour lire un fichier sans en faire un fichier importé (REF-01). */
+    Path temporaryDatabase() {
+        return directory(databases).resolve("tmp-" + UUID.randomUUID() + ".duckdb");
+    }
+
     void delete(Path file) {
         try {
             Files.deleteIfExists(file);

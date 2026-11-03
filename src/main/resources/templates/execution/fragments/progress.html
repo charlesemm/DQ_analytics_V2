@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Avancement d'une analyse (EXE-02). Tant qu'elle tourne, ce bloc se redemande toutes les 2 s ;
+     une fois terminée, il n'ajoute plus de déclencheur et les appels s'arrêtent. -->
+<div th:fragment="progress"
+     th:attr="hx-get=${progress.finished()} ? null : @{/analyses/{id}/progression(id=${runId})},
+              hx-trigger=${progress.finished()} ? null : 'every 2s',
+              hx-swap=${progress.finished()} ? null : 'outerHTML'">
+
+  <div th:unless="${progress.finished()}">
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+         th:attr="aria-valuenow=${progress.progress()}">
+      <div class="progress-bar progress-bar-striped progress-bar-animated"
+           th:style="'width: ' + ${progress.progress()} + '%'"
+           th:text="${progress.progress()} + ' %'">0 %</div>
+    </div>
+    <p class="text-muted small mt-2" th:text="#{execution.en-cours}">Analyse en cours…</p>
+  </div>
+
+  <div th:if="${progress.failed()}" class="alert alert-danger" role="alert">
+    <p class="mb-1 fw-semibold" th:text="#{execution.echec}">L'analyse a échoué.</p>
+    <p class="mb-0" th:text="${progress.error()}"></p>
+  </div>
+
+  <div th:if="${progress.finished() and !progress.failed()}">
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <span class="badge fs-6"
+            th:classappend="${progress.resultStatus()} == 'OK' ? 'bg-success'
+                            : (${progress.resultStatus()} == 'ALERT' ? 'bg-warning text-dark' : 'bg-danger')"
+            th:text="#{'execution.statut.' + ${progress.resultStatus()}}">OK</span>
+      <span class="h4 mb-0"
+            th:text="${progress.globalScore()} != null
+                     ? #{execution.score(${#numbers.formatDecimal(progress.globalScore(), 1, 'WHITESPACE', 2, 'COMMA')})}
+                     : #{execution.score.non-mesure}">Score global</span>
+    </div>
+    <p class="text-muted small" th:text="#{execution.rapport-a-venir}"></p>
+    <a class="btn btn-link px-0" th:href="@{/analyses/nouvelle}" th:text="#{execution.autre}">Lancer une autre analyse</a>
+  </div>
+</div>
+
+</body>
+</html>
